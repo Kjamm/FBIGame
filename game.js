@@ -20,6 +20,10 @@ const initialState = {
   terminalCwd: "/home/pc",
   terminalSolved: false,
   b17Inspected: false,
+  fluorescentOn: false,
+  shelfIlluminated: false,
+  shelfNoteFound: false,
+  shelfPuzzleSolved: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
@@ -43,6 +47,11 @@ const itemData = {
     name: "위치 단서",
     icon: "⌘",
     description: "2층 독서실",
+  },
+  barricade: {
+    name: "바리케이드",
+    icon: "▥",
+    description: "좀비 이동 차단",
   },
 };
 
@@ -170,6 +179,9 @@ function loadState() {
     if (!scenes[state.scene]) state.scene = state.terminalSolved ? "computerLab" : "lobby";
     if (state.terminalSolved) {
       addItem("terminal-note");
+    }
+    if (state.shelfPuzzleSolved) {
+      addItem("barricade");
     }
     delete state.chapterComplete;
     delete state.readingRoomReached;
@@ -336,7 +348,14 @@ function startGame(reset = false) {
 }
 
 function objectiveText() {
-  if (state.scene === "readingRoom") return state.b17Inspected ? "B-17에서 발견한 기록을 분석하라" : "B-17 책장을 조사하라";
+  if (state.scene === "readingRoom") {
+    if (state.shelfPuzzleSolved) return "획득한 바리케이드를 확인하라";
+    if (state.shelfNoteFound) return "책 사이에서 찾은 숫자 문제를 풀어라";
+    if (state.shelfIlluminated) return "밝아진 B-17 책장에서 종이를 조사하라";
+    if (state.b17Inspected && state.fluorescentOn) return "형광등을 들고 B-17 책장을 다시 보라";
+    if (state.b17Inspected) return "인벤토리에서 형광등을 켜라";
+    return "B-17 책장을 조사하라";
+  }
   if (state.scene === "readingRoomEntrance") return "자료열람실 문을 열고 안으로 들어가라";
   if (state.terminalSolved && state.scene === "lobby") return "로비에서 2층 자료열람실로 이동하라";
   if (state.terminalSolved) return "로비로 돌아가 2층으로 이동하라";
@@ -441,7 +460,7 @@ function renderHotspots() {
     container.innerHTML = `
       <button class="hotspot shelf-hotspot" data-action="inspect-b17" type="button">
         <span class="pulse" aria-hidden="true"></span>
-        <span class="hotspot-label">${state.b17Inspected ? "B-17 기록" : "B-17 책장"}</span>
+        <span class="hotspot-label">${state.shelfPuzzleSolved ? "B-17 확보 완료" : state.fluorescentOn ? "B-17 다시 보기" : "B-17 책장"}</span>
       </button>
       <button class="scene-back" data-action="go-reading-room-entrance" type="button">← 출입문</button>`;
   } else {
@@ -502,7 +521,7 @@ function showModal(html) {
 
 function closeModal() {
   if ($("#modal").open) $("#modal").close();
-  $("#modal").classList.remove("terminal-modal");
+  $("#modal").classList.remove("terminal-modal", "evidence-modal");
 }
 
 function inspectLetter(fromInventory = false) {
@@ -772,19 +791,106 @@ function enterReadingRoom() {
 
 function inspectB17Shelf() {
   state.b17Inspected = true;
-  setActivity("B-17 책장에서 봉인된 바이러스 구조 분석 기록을 발견했다.");
+  if (!state.fluorescentOn) {
+    setActivity("B-17 책장에는 책이 빽빽하지만 너무 어두워 자세히 보이지 않는다. 형광등이 필요하다.");
+    saveState();
+    render();
+    showModal(modalFrame({
+      code: "SEARCH AREA · B-17",
+      title: "어두운 책장",
+      body: `
+        <div class="shelf-view dark">
+          <img src="assets/images/cnu-b17-bookshelf.jpg" alt="어둠에 가려 거의 보이지 않는 B-17 책장" />
+          <div class="shelf-darkness" aria-hidden="true"></div>
+          <p>책이 꽂혀 있는 것은 보이지만<br />글자도, 책 사이도 확인할 수 없다.</p>
+        </div>
+        <div class="shelf-instruction"><span aria-hidden="true">?</span><p><strong>빛이 필요하다.</strong><br />무언가 도움이 될 만한 게 없을까?</p></div>`,
+    }));
+    $("#modal").classList.add("evidence-modal");
+    return;
+  }
+
+  state.shelfIlluminated = true;
+  setActivity(state.shelfPuzzleSolved ? "B-17 책장과 이미 확보한 종이를 다시 확인했다." : "형광등 빛 아래 책 사이에 끼워진 종이 한 장이 드러났다.");
   saveState();
   render();
   showModal(modalFrame({
-    code: "FOUND OBJECT · B-17",
-    title: "봉인된 분석 기록",
+    code: "ILLUMINATED · B-17",
+    title: "밝아진 책장",
     body: `
-      <div class="result-mark">B-17</div>
-      <p class="result-copy">책 사이에 붉은 봉인 테이프로 감긴 연구 기록이 숨겨져 있다.<br />바이러스 구조를 분석해야 다음 단서를 확인할 수 있다.</p>
-      <div class="status-grid"><div><small>현재 위치</small><strong>2층 자료열람실</strong></div><div><small>발견 지점</small><strong>B-17</strong></div><div><small>다음 문제</small><strong>바이러스 구조</strong></div></div>
-      <button class="primary-button letter-action" type="button" data-close-b17>기록을 확보한다</button>`,
+      <div class="shelf-view lit">
+        <img src="assets/images/cnu-b17-bookshelf.jpg" alt="형광등으로 밝힌 B-17 책장과 책 사이에 끼워진 종이" />
+        <div class="lamp-beam" aria-hidden="true"></div>
+        <button class="shelf-paper-hotspot" type="button" data-open-shelf-puzzle aria-label="책 사이에 끼워진 종이 조사">
+          <span aria-hidden="true">+</span><strong>${state.shelfPuzzleSolved ? "푼 문제" : "종이 발견"}</strong>
+        </button>
+      </div>
+      <p class="shelf-caption">형광등을 비추자 책 사이에 접힌 종이가 보인다. 종이를 눌러 확인하자.</p>`,
   }));
-  $("[data-close-b17]").addEventListener("click", closeModal);
+  $("#modal").classList.add("evidence-modal");
+  $("[data-open-shelf-puzzle]").addEventListener("click", openShelfPuzzle);
+}
+
+function openShelfPuzzle() {
+  state.shelfNoteFound = true;
+  setActivity(state.shelfPuzzleSolved ? "책장에서 찾은 숫자 문제의 정답은 25였다." : "B-17 책 사이에서 숫자 규칙 문제가 적힌 종이를 발견했다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: "RECOVERED NOTE · B-17",
+    title: "규칙을 찾아 빈칸을 채워라",
+    body: `
+      <div class="number-puzzle" role="img" aria-label="윗줄 68, 81, 32, 88, 16. 아랫줄 44, 22, 13, 9, 빈칸, 14로 이루어진 숫자 규칙 문제">
+        <div class="puzzle-heading"><span>Q.</span><strong>규칙을 찾아 빈칸을 채워라</strong></div>
+        <div class="number-row top-row"><b>68</b><b>81</b><b>32</b><b>88</b><b>16</b></div>
+        <div class="number-row bottom-row"><b>44</b><b>22</b><b>13</b><b>9</b><b class="number-blank">?</b><b>14</b></div>
+      </div>
+      ${state.shelfPuzzleSolved ? `
+        <div class="puzzle-complete"><span>✓</span><p><strong>해독 완료 · 정답 25</strong><br />바리케이드를 이미 확보했다.</p></div>` : `
+        <form class="answer-form" id="shelf-puzzle-form" autocomplete="off">
+          <label for="shelf-puzzle-answer">빈칸에 들어갈 숫자</label>
+          <div><input id="shelf-puzzle-answer" name="answer" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="?" aria-describedby="shelf-puzzle-feedback" /><button type="submit">확인</button></div>
+          <p id="shelf-puzzle-feedback" aria-live="polite">숫자의 규칙을 찾아 입력하자.</p>
+        </form>`}`,
+  }));
+  $("#modal").classList.add("evidence-modal");
+  const form = $("#shelf-puzzle-form");
+  if (form) {
+    form.addEventListener("submit", checkShelfPuzzleAnswer);
+    $("#shelf-puzzle-answer").focus();
+  }
+}
+
+function checkShelfPuzzleAnswer(event) {
+  event.preventDefault();
+  const input = $("#shelf-puzzle-answer");
+  const feedback = $("#shelf-puzzle-feedback");
+  if (input.value.trim() !== "25") {
+    feedback.textContent = "잠금이 해제되지 않는다. 규칙을 다시 살펴보자.";
+    feedback.classList.add("error");
+    input.classList.add("wrong");
+    input.select();
+    if (navigator.vibrate) navigator.vibrate(100);
+    return;
+  }
+
+  state.shelfPuzzleSolved = true;
+  state.selectedItem = "barricade";
+  addItem("barricade");
+  setActivity("숫자 문제의 정답 25를 입력해 잠금을 풀고 접이식 바리케이드를 확보했다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: "ITEM ACQUIRED · DEFENSE",
+    title: "바리케이드 획득",
+    body: `
+      <div class="barricade-reward" aria-hidden="true"><span>▥</span></div>
+      <p class="result-copy"><strong>정답 25.</strong><br />책장 아래 잠금 장치가 열리며 접이식 바리케이드가 나온다. 좀비의 이동 경로를 한 번 차단할 수 있다.</p>
+      <div class="status-grid"><div><small>획득 아이템</small><strong>바리케이드</strong></div><div><small>용도</small><strong>이동 차단</strong></div><div><small>보관 위치</small><strong>인벤토리</strong></div></div>
+      <button class="primary-button letter-action" type="button" data-close-reward>인벤토리에 넣는다</button>`,
+  }));
+  $("#modal").classList.add("evidence-modal");
+  $("[data-close-reward]").addEventListener("click", closeModal);
 }
 
 function escapeWrongRoom() {
@@ -821,10 +927,22 @@ function inspectItem(id) {
     }));
     return;
   }
+  if (id === "barricade") {
+    showModal(modalFrame({
+      code: "ITEM · DEFENSE",
+      title: "접이식 바리케이드",
+      body: `<div class="barricade-reward compact" aria-hidden="true"><span>▥</span></div><p class="result-copy">B-17 숫자 문제를 풀고 얻은 바리케이드다.<br />좀비의 이동 경로를 한 번 차단할 수 있다.</p>`,
+    }));
+    return;
+  }
+  state.fluorescentOn = true;
+  setActivity(state.scene === "readingRoom" && state.b17Inspected ? "형광등을 켰다. 이제 B-17 책장을 다시 확인할 수 있다." : "휴대용 형광등을 켰다. 어두운 장소를 조사할 수 있다.");
+  saveState();
+  render();
   showModal(modalFrame({
-    code: "ITEM · PORTABLE LIGHT",
-    title: "휴대용 형광등",
-    body: `<div class="result-mark">▰</div><p class="result-copy">로비 비상함에서 꺼낸 형광등이다.<br />전기가 끊긴 장소나 형광 표본을 확인할 때 사용할 수 있다.</p>`,
+    code: "ITEM ACTIVE · PORTABLE LIGHT",
+    title: "형광등을 켰다",
+    body: `<div class="result-mark lamp-active">▰</div><p class="result-copy">차가운 형광빛이 어둠을 밀어낸다.<br />이제 B-17 책장 사이를 자세히 살펴볼 수 있다.</p>`,
   }));
 }
 
