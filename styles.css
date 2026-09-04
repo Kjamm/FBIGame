@@ -193,14 +193,31 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .title-content h1 { font-size: clamp(2.8rem, 13vw, 4.6rem); }
   .title-brief { margin: 1.2rem 0; }
   .danger-tape { bottom: 1.2rem; }
-  .objective { min-width: 0; max-width: 11rem; text-align: right; }
-  .hud-center { gap: 0.8rem; }
+  .hud { min-height: 3.9rem; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.55rem; padding: 0.4rem 0.55rem; }
+  .hud-brand { gap: 0.35rem; }
+  .hud-brand .hazard-mark { width: 2.15rem; height: 2.15rem; font-size: 1.05rem; }
+  .hud-brand strong { font-size: 0.78rem; }
+  .hud-brand small { font-size: 0.62rem; }
+  .hud-center { grid-row: auto; grid-column: auto; align-items: flex-start; flex-direction: column; gap: 0.08rem; min-width: 0; padding-top: 0; border-top: 0; }
+  .timer { display: block; }
+  .timer small { display: none; }
+  .timer strong { font-size: 1.05rem; }
+  .objective { display: block; min-width: 0; max-width: 9.5rem; text-align: left; }
+  .objective small { display: none; }
+  .objective strong { display: block; overflow: hidden; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+  .hud-status { gap: 0.38rem; }
+  .bite-meter small { display: none; }
+  #bite-pips { gap: 0.2rem; }
+  #bite-pips i { width: 0.5rem; height: 0.5rem; }
+  .hud-button { width: 2.5rem; height: 2.5rem; }
+  .scene { aspect-ratio: 16 / 10; }
+  .scene > img { object-fit: cover; }
   .hotspot { width: 3rem; height: 3rem; }
-  .paper-hotspot { left: 55%; top: 88%; transform: translate(-50%, -50%); }
+  .paper-hotspot { left: 55%; top: 86%; transform: translate(-50%, -50%); }
   .paper-hotspot .hotspot-label { top: auto; bottom: calc(100% + 0.35rem); }
-  .hallway-hotspot { left: 78%; right: auto; top: 58%; transform: translate(-50%, -50%); }
-  .door-101 { left: 11%; top: 20%; transform: translate(-50%, -50%); }
-  .door-105 { left: 85%; right: auto; top: 20%; transform: translate(-50%, -50%); }
+  .hallway-hotspot { left: 81%; right: auto; top: 58%; transform: translate(-50%, -50%); }
+  .door-101 { left: 7%; top: 20%; transform: translate(-50%, -50%); }
+  .door-105 { left: 89%; right: auto; top: 20%; transform: translate(-50%, -50%); }
   .scene-caption { left: 0.45rem; bottom: 0.45rem; padding: 0.4rem 0.55rem; gap: 0.5rem; }
   .scene-caption > span { font-size: 1.25rem; }
   .scene-caption small { font-size: 0.6rem; }
@@ -210,6 +227,17 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .hotspot-label { font-size: 0.72rem; }
   .room-hotspot { width: 3.25rem; height: 3.25rem; }
   .room-hotspot .hotspot-label { font-size: 0.92rem; }
+  .inventory-title { padding: 0.5rem 0.65rem; border-top-width: 2px; }
+  .inventory-title span { font-size: 0.68rem; }
+  .inventory-items { grid-template-columns: repeat(4, minmax(4.25rem, 1fr)); gap: 0.38rem; padding: 0.48rem; }
+  .item { min-height: 4.4rem; gap: 0.22rem; padding: 0.35rem; }
+  .item .item-icon { font-size: 1.35rem; }
+  .item strong { font-size: 0.72rem; }
+  .item small { display: none; }
+  .log-button { gap: 0.45rem; padding: 0.52rem 0.65rem; }
+  .log-button > span { width: 1.55rem; height: 1.55rem; }
+  .log-button small { display: none; }
+  .log-button strong { display: -webkit-box; overflow: hidden; font-size: 0.72rem; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
   .jumpscare > img { object-fit: contain; object-position: center; }
   .choice-summary, .status-grid { grid-template-columns: 1fr; }
   .map-node { width: 4.5rem; height: 4.5rem; }
