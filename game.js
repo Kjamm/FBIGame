@@ -70,7 +70,7 @@ const itemData = {
   "terminal-note": {
     name: "위치 단서",
     icon: "⌘",
-    description: "2층 독서실",
+    description: "2층 자료열람실",
   },
   barricade: {
     name: "바리케이드",
@@ -169,7 +169,7 @@ const virtualFileSystem = {
     directories: ["samples"],
     files: {
       "README.txt": "중요 기록은 숨김 파일로 전환했다. 숨김 항목까지 확인하려면 ls -a 를 입력하라.",
-      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17\nAUTHOR_AFFILIATION = 동물실험 연구센터\nSYSTEM_ALERT = 사고 발생 3분 후 연구 기록 대량 삭제",
+      ".next_location": "NEXT_LOCATION = 2층 자료열람실\nEMERGENCY_CACHE = B-17\nAUTHOR_AFFILIATION = 동물실험 연구센터\nSECURITY_LOG = 외부 검체 반입 직후 출입 기록 삭제",
     },
   },
   "/home/pc/Documents/research/2026/samples": {
@@ -646,11 +646,11 @@ function inspectLetter(fromInventory = false) {
       <div class="letter" aria-label="대학원생이 남긴 편지">
         <p>이 편지를 보는 아무나에게…</p>
         <p><span class="corrupt">ㅇ1</span> 편지를 읽으실 수 있다면 당신은 아직 감염이 되지 않은 거겠죠.</p>
-        <p>저는 생명대 한 연구실에서 일하고 있는 대학원생입니다.</p>
-        <p>실수로 실험을 잘못해버려 바이러스가 생명대 전역으로 퍼지게 <span class="corrupt">되0ㅓ</span>버렸습니다.</p>
-        <p>다만 <span class="corrupt">ㅇ1</span> 바이러스는 다행히도 공기 중으로는 전파되지 않는 것 같습니다.</p>
-        <p>제 연구실에 다행히 해당 바이러스의 구조가 있습니다.<br />부디 저희 연구실에 도달하셔서 백신을 만들어 주셨으면 좋겠습니다.</p>
-        <p class="faded">저희 연 ㄱ ㅜ 실….ㅇ느…</p>
+        <p>저는 생명대 동물실험 연구센터에서 일하는 대학원생입니다.</p>
+        <p>오늘 오후, 등록되지 않은 냉각 상자 하나가 외부에서 반입됐습니다. 보관 기록을 확인하던 중 그 안의 바이러스가 신고된 검체와 다르다는 것을 알게 <span class="corrupt">되0ㅓ</span> 격리를 시도했습니다.</p>
+        <p>하지만 누군가 격리 장치를 해제했고 감염이 건물 전체로 번졌습니다. 다만 <span class="corrupt">ㅇ1</span> 바이러스는 공기 중으로는 전파되지 않는 것 같습니다.</p>
+        <p>반입자의 신원은 건물 기록 어딘가에 남아 있을 겁니다. 감염 직전, 아래층 컴퓨터실에 조사 기록의 위치를 숨겼습니다.<br />그 기록을 따라 검체 원본을 찾고 백신을 만들어 주세요.</p>
+        <p class="faded">컴퓨터실… 호수는 문장 속에… 더는 시간이…</p>
       </div>
       <button class="primary-button letter-action" type="button" data-follow-letter>${fromInventory ? "편지를 접는다" : "편지를 챙기고 복도로 간다"} <span>${fromInventory ? "×" : "→"}</span></button>
       <div class="hint-row"><div class="hint-text" id="letter-hint">문장에 이상한 부분이 있다.</div><button class="hint-button" type="button" data-letter-hint>힌트 −01:00</button></div>`,
@@ -760,7 +760,7 @@ function completeTerminalPuzzle() {
   state.terminalSolved = true;
   state.zombieDistance = Math.max(state.zombieDistance, 92);
   addItem("terminal-note");
-  setActivity("숨김 파일에서 다음 장소를 찾았다: 2층 독서실 B-17 책장.");
+  setActivity("숨김 파일에서 다음 장소를 찾았다: 2층 자료열람실 B-17 비상 물자함.");
   saveState();
   render();
 }
@@ -843,10 +843,10 @@ function openComputerTerminal() {
     { text: "목록을 확인하려면 ls를 입력하라. 사용 가능한 명령은 help에서 확인할 수 있다.", type: "hint" },
   ];
   if (state.terminalSolved) {
-    terminalLines.push({ text: "복구 완료: 다음 장소는 2층 독서실 B-17 책장이다.", type: "success" });
+    terminalLines.push({ text: "복구 완료: 다음 장소는 2층 자료열람실 B-17 비상 물자함이다.", type: "success" });
   }
   showModal(modalFrame({
-    code: "PC-07 · LOCAL STORAGE",
+    code: "PC-101 · LOCAL STORAGE",
     title: "켜진 컴퓨터",
     body: `
       <div class="terminal-screen">
@@ -880,14 +880,14 @@ function goToReadingRoomEntrance() {
   closeModal();
   if (state.scene === "readingRoom") {
     setActivity(state.shelfPuzzleSolved
-      ? "자료열람실 밖으로 나오자 왼쪽 실험실 입구가 열려 있다. 안쪽에서 빛이 희미하게 반짝인다."
+      ? "자료열람실 밖으로 나오자 복구된 비상 전원이 켜지고, 왼쪽 동물실험 연구센터 문이 열린다. 안쪽에서 빛이 희미하게 반짝인다."
       : "자료열람실 출입문 앞으로 돌아왔다.");
   } else if (state.scene === "animalResearchCenter") {
     setActivity(state.zombieSurgeActive
       ? "2층 복도로 나왔다. 아래층에서 수많은 발소리와 비명이 들린다. 1층 로비로 서둘러야 한다."
       : "동물실험 연구센터에서 빠져나와 2층 복도로 돌아왔다. 감염된 실험쥐들의 울음소리가 문 너머로 들린다.");
   } else {
-    setActivity("터미널에서 찾은 단서를 따라 2층 212호 자료열람실 앞에 도착했다.");
+    setActivity("터미널에서 복구한 기록을 따라 2층 212호 자료열람실의 B-17 비상 물자함을 찾으러 왔다.");
     state.zombieDistance = Math.max(64, state.zombieDistance - 12);
   }
   saveState();
@@ -899,7 +899,7 @@ function inspectLabEntrance() {
   closeModal();
   const showStory = !state.animalCenterStoryShown;
   state.animalCenterStoryShown = true;
-  setActivity("101호 기록의 작성자 소속과 같은 동물실험 연구센터에 도착했다. 손상된 케이지 주변에 감염된 실험쥐들이 모여 있다.");
+  setActivity("편지 작성자의 소속으로 기록된 동물실험 연구센터에 도착했다. 손상된 케이지 주변에 감염된 실험쥐들이 모여 있다.");
   saveState();
   transitionTo("animalResearchCenter");
   if (showStory) {
@@ -916,16 +916,16 @@ function showAnimalCenterIntro() {
     body: `
       <div class="story-evidence">
         <span class="story-evidence-icon" aria-hidden="true">⌘</span>
-        <div><small>101호 삭제 기록 · 작성자 소속</small><strong>동물실험 연구센터</strong></div>
+        <div><small>편지 서명 · 101호 복구 로그</small><strong>동물실험 연구센터</strong></div>
         <b>MATCH</b>
       </div>
-      <p class="result-copy">컴퓨터에서 본 소속과 일치한다.<br />텅 빈 연구실에는 깨진 케이지와 중단된 현미경만 남아 있다.</p>`,
+      <p class="result-copy">편지에 적힌 소속과 컴퓨터에서 복구한 기록이 일치한다.<br />사람이 사라진 연구실에는 깨진 케이지와 중단된 현미경만 남아 있다.</p>`,
   }));
 }
 
 function inspectInfectedRats() {
   state.infectedRatsInspected = true;
-  setActivity("케이지 기록을 확인했다. 사람의 감염 보고보다 6시간 먼저 실험쥐의 이상 행동이 기록되어 있다.");
+  setActivity("케이지 기록을 확인했다. 첫 사람 감염 18분 전부터 실험쥐의 이상 행동이 기록되어 있다.");
   saveState();
   render();
   showModal(modalFrame({
@@ -934,11 +934,11 @@ function inspectInfectedRats() {
     body: `
       <div class="result-mark danger-mark" aria-hidden="true">☣</div>
       <div class="incident-timeline" aria-label="감염 사건 시간 기록">
-        <div><small>사고 6시간 전</small><strong>실험쥐 이상 행동</strong></div>
+        <div><small>첫 사람 감염 18분 전</small><strong>실험쥐 이상 행동</strong></div>
         <span aria-hidden="true">→</span>
         <div class="danger"><small>사고 발생</small><strong>첫 사람 감염</strong></div>
       </div>
-      <p class="result-copy">탁한 눈, 공격성 증가, 케이지 파손.<br />실험쥐의 이상 징후는 사람들이 감염되기 전부터 시작됐다.</p>`,
+      <p class="result-copy">탁한 눈, 공격성 증가, 케이지 파손.<br />외부 검체가 들어온 뒤 실험쥐가 먼저 노출되고, 곧 사람에게도 감염이 번진 것으로 보인다.</p>`,
   }));
 }
 
@@ -967,7 +967,7 @@ function microscopePuzzleBody() {
   const objective = Number(state.microscopeObjective);
   const totalMagnification = objective * 10;
   return `
-    <p class="microscope-intro">누가 연구하다 만 바이러스 감염 쥐의 흔적이다. 살펴보자.</p>
+    <p class="microscope-intro">누군가 관찰하다 멈춘 바이러스 감염 쥐의 조직 표본이다. 살펴보자.</p>
     <div class="microscope-stage${state.microscopeSolved ? " focused" : ""}">
       <div class="scope-viewport">
         <img id="microscope-specimen" src="assets/images/infected-rat-tissue.jpg" alt="현미경으로 관찰한 바이러스 감염 쥐의 조직" style="--focus-blur: ${focus.blur}px; --focus-scale: ${focus.scale};" />
@@ -987,8 +987,8 @@ function microscopePuzzleBody() {
             <p><strong>문자 재조합 완료</strong><br />${state.barricadeInstalled ? "1층 로비의 출입구를 봉쇄했다." : "1층 로비로 이동해 바리케이드를 설치해야 한다."}</p>
           </div>` : `
           <div class="drawer-puzzle-card">
-            <p><span>RECOVERY KEY</span> 연구 자료 복구용 보안 문구가 적힌 종이다.</p>
-            <img src="assets/images/drawer-word-puzzle-v2.jpg" alt="N E W D O O R 일곱 글자를 모두 재조합해 한 단어를 만드는 생물안전 연구 기록지" />
+            <p><span>RECOVERY KEY</span> 격리 제어 단말과 연결된 오프라인 사건 기록의 복구 문구다.</p>
+            <img src="assets/images/drawer-word-puzzle-v2.jpg" alt="N E W D O O R 일곱 글자를 모두 재조합해 보안 문구를 만드는 생물안전 기록지" />
             <form class="answer-form drawer-answer-form" id="drawer-puzzle-form" autocomplete="off">
               <label for="drawer-puzzle-answer">보안 복구 문구 입력</label>
               <div><input id="drawer-puzzle-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="정답 입력" /><button type="submit">확인</button></div>
@@ -1118,15 +1118,15 @@ function showZombieSurgeAlert() {
     code: "EMERGENCY · 1F SURGE",
     title: "대규모 좀비 출현",
     body: `
-      <div class="system-cascade" aria-label="연구 자료 복구와 격리문 연동 상태">
-        <div><span>✓</span><small>ARCHIVE RECOVERY</small><strong>연구 자료 복구 완료</strong></div>
+      <div class="system-cascade" aria-label="사건 기록 복구와 격리문 연동 상태">
+        <div><span>✓</span><small>INCIDENT ARCHIVE</small><strong>사건 기록 복구 완료</strong></div>
         <div class="danger"><span>!</span><small>QUARANTINE GATE · 1F</small><strong>격리문 연동 해제</strong></div>
       </div>
       <div class="zombie-surge-visual">
         <img src="assets/images/cnu-zombie-chase.jpg" alt="1층 복도를 가득 메우며 몰려오는 대규모 좀비 무리" />
         <div aria-hidden="true"><strong>1F</strong><span>감염체 신호 폭증</span></div>
       </div>
-      <p class="result-copy"><strong>ONE WORD는 연구 자료 복구 암호였다.</strong><br />하지만 복구 장치와 연결된 1층 격리문까지 함께 열려 버렸다. 감염체들이 로비로 몰려든다.</p>
+      <p class="result-copy"><strong>ONE WORD는 오프라인 사건 기록의 복구 문구였다.</strong><br />하지만 같은 비상 회로에 연결된 1층 격리문까지 함께 열려 버렸다. 감염체들이 로비로 몰려든다.</p>
       <div class="emergency-order"><small>긴급 행동</small><strong>15초 안에 1층 로비의 바리케이드를 설치하라.</strong></div>
       <div class="barricade-countdown" role="timer" aria-live="polite"><small>설치 제한 시간</small><strong data-barricade-countdown>${formatBarricadeCountdown()}</strong><span>초과 시 좀비에게 1회 물린다</span></div>
       <button class="primary-button letter-action" type="button" data-dismiss-surge>즉시 로비로 이동 <span>→</span></button>`,
@@ -1264,14 +1264,14 @@ function cctvArchiveBody() {
     { sample: "D-02", cover: "71%", identity: "88.6%", evalue: "7e-08" },
   ];
   return `
-    <div class="story-evidence culprit-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>바이러스 샘플 반입자</small><strong>생정융 학생회장</strong></div><b>SUSPECT CONFIRMED</b></div>
+    <div class="story-evidence culprit-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>샘플 반입 · 격리 해제 계정 일치</small><strong>생정융 학생회장</strong></div><b>CULPRIT CONFIRMED</b></div>
     <div class="cctv-culprit-still">
       <img src="assets/images/cctv-student-president-silhouette.jpg" alt="냉각 상자를 들고 과사무실 복도를 지나는 중단발 여성 학생회장의 실루엣이 찍힌 CCTV 화면" />
-      <div><span>CAM 04 · IDENTITY MATCH</span><strong>생정융 학생회장</strong><small>학생회 완장 · 냉각 상자 소지 확인</small></div>
+      <div><span>CAM 04 · IDENTITY MATCH</span><strong>생정융 학생회장</strong><small>기업탐방 명단 · 학생회 완장 · 관리자 계정 일치</small></div>
       <b>MATCH 98%</b>
     </div>
-    <div class="cctv-recovery-rule"><small>BIO-ARCHIVE RECOVERY · BLAST</small><strong>냉각 상자에서 검출된 바이러스 서열과 가장 신뢰도 높게 일치하는 보관 샘플을 찾아라.</strong><p>Query cover와 Identity는 높을수록, E-value는 0에 가까울수록 신뢰도가 높다.</p></div>
-    <div class="blast-query-card"><span>QUERY · OUTBREAK_SAMPLE</span><code>ATGGCCTTTGAACCTGGTTGCTAACGATCGTACGTA</code><small>Length: 36 bp · nucleotide BLAST</small></div>
+    <div class="cctv-recovery-rule"><small>BIO-ARCHIVE RECOVERY · BLAST</small><strong>냉각 상자에서 검출된 바이러스 서열과 가장 신뢰도 높게 일치하는 보관 샘플을 찾아라.</strong><p>Query cover와 Identity는 높을수록, E-value는 0에 가까울수록 신뢰도가 높다. Sample ID는 저온 보관함 번호와 같다.</p></div>
+    <div class="blast-query-card"><span>QUERY · OUTBREAK_SAMPLE</span><code>ATGGCCTTTGAACCTGGTTGCTAACGATCGTACGTA</code><small>Sequence preview: 36 / 1,284 bp · nucleotide BLAST</small></div>
     <div class="blast-results-wrap">
       <table class="blast-results" aria-label="바이러스 서열 BLAST 검색 결과">
         <thead><tr><th>Sample ID</th><th>Query cover</th><th>Identity</th><th>E-value</th></tr></thead>
@@ -1282,7 +1282,7 @@ function cctvArchiveBody() {
       <div class="journal-code-reveal cctv-route-reveal">
         <span>BLAST MATCH · CCTV RESTORED</span><strong>C-07</strong><small>학생회장의 최종 이동 지점 · 3층 저온 시료 보관실</small>
       </div>
-      <p class="result-copy cctv-result-copy">C-07 샘플의 서열이 현장 검체와 완전히 일치한다. 연결된 CCTV의 마지막 프레임에는 학생회장이 냉각 상자를 <strong>C-07 보관함</strong>에 넣는 모습이 남아 있다.</p>` : `
+      <p class="result-copy cctv-result-copy">현장 검체와 완전히 일치한 C-07 샘플은 3층 저온 보관함에 등록되어 있다. 같은 시각, 학생회장의 관리자 계정으로 <strong>C-07 보관함</strong>이 열린 출입 로그도 복구됐다.</p>` : `
       <form class="answer-form cctv-answer-form" id="cctv-archive-form" autocomplete="off">
         <label for="cctv-archive-answer">가장 신뢰도 높은 Sample ID</label>
         <div><input id="cctv-archive-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="4" placeholder="? - ? ?" aria-describedby="cctv-archive-feedback" /><button type="submit">BLAST 확인</button></div>
@@ -1294,7 +1294,7 @@ function inspectSecurityConsole() {
   state.securityConsoleInspected = true;
   state.culpritIdentified = true;
   setActivity(state.cctvArchiveSolved
-    ? "BLAST 분석으로 복구된 영상은 학생회장이 향한 3층 저온 시료 보관실 C-07을 가리킨다."
+    ? "BLAST 결과와 출입 로그가 학생회장이 사용한 3층 저온 시료 보관실 C-07을 가리킨다."
     : "CCTV 보안 서버가 바이러스 서열 인증을 요구한다. BLAST 결과에서 가장 신뢰도 높은 샘플을 찾아야 한다.");
   saveState();
   render();
@@ -1328,7 +1328,7 @@ function checkCctvArchiveCode(event) {
   }
 
   state.cctvArchiveSolved = true;
-  setActivity("BLAST에서 현장 바이러스와 일치하는 C-07 샘플을 찾았다. 학생회장은 3층 저온 시료 보관실로 향했다.");
+  setActivity("BLAST에서 현장 바이러스와 일치하는 C-07 샘플을 찾았고, 같은 보관함을 연 학생회장의 출입 로그도 복구했다.");
   saveState();
   render();
   inspectSecurityConsole();
@@ -1344,7 +1344,7 @@ function installBarricade() {
   state.inventory = state.inventory.filter((item) => item !== "barricade");
   addItem("research-fragment");
   if (state.selectedItem === "barricade") state.selectedItem = null;
-  setActivity("로비를 봉쇄한 뒤 바리케이드 아래에서 손상된 연구일지를 발견했다. 실험쥐가 최초 감염원은 아니었다.");
+  setActivity("바리케이드를 고정하려 로비 안내 데스크를 밀다가, 처음 편지와 같은 필체의 손상된 연구일지를 발견했다.");
   saveState();
   render();
   showModal(modalFrame({
@@ -1352,17 +1352,17 @@ function installBarricade() {
     title: "바리케이드 설치 완료",
     body: `
       <div class="barricade-reward compact installed" aria-hidden="true"><span>▥</span></div>
-      <p class="result-copy">바리케이드가 출입구를 막았다. 철제 프레임 아래에 끼어 있던 손상된 연구일지 한 장이 드러난다.</p>
+      <p class="result-copy">바리케이드가 출입구를 막았다. 지지대로 쓰려고 안내 데스크를 밀자, 그 아래에 끼어 있던 찢어진 기록 한 장이 드러난다. 처음 편지와 같은 필체다.</p>
       <div class="research-fragment-note">
-        <span>연구일지 · 마지막 기록</span>
-        <strong>“실험쥐는 감염원이 아니었다.<br />누군가 이미 감염된 바이러스를 이곳에 가져왔다.”</strong>
+        <span>연구일지 · 격리 직전 기록</span>
+        <strong>“실험쥐의 감염 특징은 미등록 검체와 일치했다.<br />반입 시각은 기업탐방 버스 복귀 직후.<br />격리 해제 명령은 과사무실 관리자 계정에서 실행됐다.”</strong>
       </div>
       <div class="story-evidence compact"><span class="story-evidence-icon" aria-hidden="true">≣</span><div><small>새 증거 획득</small><strong>손상된 연구일지</strong></div><b>NEW</b></div>`,
   }));
 }
 
 function enterReadingRoom() {
-  setActivity("자료열람실 안으로 들어왔다. 단서가 가리킨 B-17 책장을 찾아야 한다.");
+  setActivity("자료열람실 안으로 들어왔다. 복구 기록에 표시된 B-17 책장과 비상 물자함을 찾아야 한다.");
   saveState();
   transitionTo("readingRoom");
 }
@@ -1411,13 +1411,14 @@ function inspectB17Shelf() {
 
 function openShelfPuzzle() {
   state.shelfNoteFound = true;
-  setActivity(state.shelfPuzzleSolved ? "책장에서 찾은 숫자 문제의 정답은 25였다." : "B-17 책 사이에서 숫자 규칙 문제가 적힌 종이를 발견했다.");
+  setActivity(state.shelfPuzzleSolved ? "B-17 비상 물자함의 잠금 번호는 25였다." : "B-17 책 사이에서 비상 물자함 잠금표를 발견했다.");
   saveState();
   render();
   showModal(modalFrame({
-    code: "RECOVERED NOTE · B-17",
-    title: "규칙을 찾아 빈칸을 채워라",
+    code: "EMERGENCY CACHE · B-17",
+    title: "비상 물자함 잠금 해제",
     body: `
+      <div class="emergency-protocol"><small>책장 하단 비상 물자함</small><strong>숫자표의 빈칸이 잠금 번호다.</strong></div>
       <div class="number-puzzle" role="img" aria-label="윗줄 68, 81, 32, 88, 16. 아랫줄 44, 22, 13, 9, 빈칸, 14로 이루어진 숫자 규칙 문제">
         <div class="puzzle-heading"><span>Q.</span><strong>규칙을 찾아 빈칸을 채워라</strong></div>
         <div class="number-row top-row"><b>68</b><b>81</b><b>32</b><b>88</b><b>16</b></div>
@@ -1455,7 +1456,7 @@ function checkShelfPuzzleAnswer(event) {
   state.shelfPuzzleSolved = true;
   state.selectedItem = "barricade";
   addItem("barricade");
-  setActivity("숫자 문제의 정답 25를 입력해 잠금을 풀고 접이식 바리케이드를 확보했다.");
+  setActivity("정답 25로 B-17 비상 물자함을 열어 접이식 바리케이드를 확보했고, 복도 비상 전원도 복구됐다.");
   saveState();
   render();
   showModal(modalFrame({
@@ -1463,7 +1464,7 @@ function checkShelfPuzzleAnswer(event) {
     title: "바리케이드 획득",
     body: `
       <div class="barricade-reward" aria-hidden="true"><span>▥</span></div>
-      <p class="result-copy"><strong>정답 25.</strong><br />책장 아래 잠금 장치가 열리며 접이식 바리케이드가 나온다. 좀비의 이동 경로를 한 번 차단할 수 있다.</p>
+      <p class="result-copy"><strong>정답 25.</strong><br />책장 아래 비상 물자함이 열리며 접이식 바리케이드가 나온다. 동시에 연결된 복도 비상 전원이 복구된다.</p>
       <div class="emergency-protocol"><small>함께 발견된 비상 계획</small><strong>“격리 실패 시 1층 출입구를 우선 봉쇄할 것.”</strong></div>
       <div class="status-grid"><div><small>획득 아이템</small><strong>바리케이드</strong></div><div><small>용도</small><strong>이동 차단</strong></div><div><small>보관 위치</small><strong>인벤토리</strong></div></div>
       <button class="primary-button letter-action" type="button" data-close-reward>인벤토리에 넣는다</button>`,
@@ -1486,8 +1487,8 @@ function researchJournalBody() {
   if (!state.journalUvRevealed) {
     return `
       <div class="research-fragment-note inventory-note journal-dormant">
-        <span>연구일지 · 마지막 기록</span>
-        <strong>“실험쥐는 감염원이 아니었다.<br />누군가 이미 감염된 바이러스를 이곳에 가져왔다.”</strong>
+        <span>연구일지 · 격리 직전 기록</span>
+        <strong>“실험쥐의 감염 특징은 미등록 검체와 일치했다.<br />반입 시각은 기업탐방 버스 복귀 직후.<br />격리 해제 명령은 과사무실 관리자 계정에서 실행됐다.”</strong>
         <small>나머지 페이지는 찢겨 나갔다. 종이 섬유 사이에 희미한 얼룩이 남아 있다.</small>
         <div class="uv-ghost-marks" aria-hidden="true">A · T &nbsp; G · C &nbsp; 01—04</div>
       </div>
@@ -1595,8 +1596,8 @@ function inspectItem(id) {
       title: "위치 단서",
       body: `
         <div class="result-mark">⌘</div>
-        <p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />확인 지점: B-17 책장</p>
-        <div class="story-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>작성자 소속</small><strong>동물실험 연구센터</strong></div><b>삭제 감지 · 사고 +03분</b></div>`,
+        <p class="result-copy"><strong>다음 장소: 2층 자료열람실</strong><br />확인 지점: B-17 비상 물자함</p>
+        <div class="story-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>편지 작성자 소속</small><strong>동물실험 연구센터</strong></div><b>출입 기록 삭제 감지</b></div>`,
     }));
     return;
   }
@@ -1604,7 +1605,7 @@ function inspectItem(id) {
     showModal(modalFrame({
       code: "ITEM · DEFENSE",
       title: "접이식 바리케이드",
-      body: `<div class="barricade-reward compact" aria-hidden="true"><span>▥</span></div><p class="result-copy">B-17 숫자 문제를 풀고 얻은 바리케이드다.<br />좀비의 이동 경로를 한 번 차단할 수 있다.</p>`,
+      body: `<div class="barricade-reward compact" aria-hidden="true"><span>▥</span></div><p class="result-copy">B-17 비상 물자함에서 꺼낸 접이식 바리케이드다.<br />좀비의 이동 경로를 한 번 차단할 수 있다.</p>`,
     }));
     return;
   }
@@ -1672,7 +1673,7 @@ function showFailure() {
     code: "GAME OVER · TIME EXPIRED",
     title: "감염 확산",
     close: false,
-    body: `<p class="result-copy">제한 시간 안에 연구실을 찾지 못했다.<br />좀비 바이러스가 생명대 전체로 퍼졌다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
+    body: `<p class="result-copy">제한 시간 안에 백신 제작에 필요한 바이러스 원본을 확보하지 못했다.<br />좀비 바이러스가 생명대 전체로 퍼졌다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
   }));
   $("[data-restart]").addEventListener("click", () => {
     closeModal();
