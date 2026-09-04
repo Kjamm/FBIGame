@@ -7,7 +7,6 @@ const initialState = {
   started: false,
   paused: false,
   failed: false,
-  chapterComplete: false,
   elapsed: 0,
   scene: "lobby",
   letterRead: false,
@@ -19,7 +18,6 @@ const initialState = {
   letterHints: 0,
   terminalCwd: "/home/pc",
   terminalSolved: false,
-  readingRoomReached: false,
   b17Inspected: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
@@ -49,35 +47,35 @@ const itemData = {
 
 const scenes = {
   lobby: {
-    image: "assets/images/cnu-lobby-outbreak.png",
+    image: "assets/images/cnu-lobby-outbreak.jpg",
     alt: "어둡고 버려진 생명시스템과학대학 로비",
     number: "01",
     name: "생명시스템과학대학 로비",
     hud: "1F · 로비",
   },
   hallway: {
-    image: "assets/images/cnu-hallway-101-105.png",
+    image: "assets/images/cnu-hallway-101-105.jpg",
     alt: "101호와 105호가 마주 보는 어두운 생명시스템과학대학 복도",
     number: "02",
     name: "생명시스템과학대학 1층 복도",
     hud: "1F · 101—105",
   },
   computerLab: {
-    image: "assets/images/cnu-computer-lab.png",
+    image: "assets/images/cnu-computer-lab.jpg",
     alt: "여러 대의 컴퓨터 중 한 대만 켜진 어두운 101호 컴퓨터실",
     number: "03",
     name: "101호 컴퓨터실",
     hud: "1F · 101호",
   },
   readingRoomEntrance: {
-    image: "assets/images/cnu-reading-room-entrance.png",
+    image: "assets/images/cnu-reading-room-entrance.jpg",
     alt: "비상등이 켜진 생명시스템과학대학 2층 자료열람실 앞",
     number: "04",
     name: "2층 자료열람실 앞",
     hud: "2F · 212호 앞",
   },
   readingRoom: {
-    image: "assets/images/cnu-reading-room-interior.png",
+    image: "assets/images/cnu-reading-room-interior.jpg",
     alt: "책상과 책장이 늘어선 어두운 2층 자료열람실 내부",
     number: "05",
     name: "2층 자료열람실",
@@ -162,14 +160,14 @@ function loadState() {
     }
     if (state.scene === "chapterEnd" && !state.terminalSolved) {
       state.scene = "computerLab";
-      state.chapterComplete = false;
     }
     if (!virtualFileSystem[state.terminalCwd]) state.terminalCwd = "/home/pc";
     if (!scenes[state.scene]) state.scene = state.terminalSolved ? "computerLab" : "lobby";
     if (state.terminalSolved) {
-      state.chapterComplete = false;
       addItem("terminal-note");
     }
+    delete state.chapterComplete;
+    delete state.readingRoomReached;
     $("#continue-button").hidden = !state.started || state.failed;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
@@ -251,7 +249,11 @@ function renderHotspots() {
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">1층 복도</span>
         </button>` : ""}
-      ${state.terminalSolved ? `<button class="scene-next lobby-floor-button" data-action="go-reading-room-entrance" type="button">2층 자료열람실로 이동 →</button>` : ""}`;
+      ${state.terminalSolved ? `
+        <button class="hotspot room-hotspot second-floor-hotspot" data-action="go-reading-room-entrance" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">2층 자료열람실</span>
+        </button>` : ""}`;
   } else if (state.scene === "hallway") {
     container.innerHTML = `
       <button class="hotspot room-hotspot door-101" data-action="choose-101" type="button">
@@ -471,7 +473,6 @@ function renderTerminalOutput() {
 function completeTerminalPuzzle() {
   if (state.terminalSolved) return;
   state.terminalSolved = true;
-  state.chapterComplete = false;
   state.zombieDistance = Math.max(state.zombieDistance, 92);
   addItem("terminal-note");
   setActivity("숨김 파일에서 다음 장소를 찾았다: 2층 독서실 B-17 책장.");
@@ -603,7 +604,6 @@ function goToReadingRoomEntrance() {
 }
 
 function enterReadingRoom() {
-  state.readingRoomReached = true;
   setActivity("자료열람실 안으로 들어왔다. 단서가 가리킨 B-17 책장을 찾아야 한다.");
   saveState();
   transitionTo("readingRoom");
@@ -702,7 +702,7 @@ function formatElapsed(seconds) {
 }
 
 function showFailure() {
-  if (failureShown || state.chapterComplete) return;
+  if (failureShown) return;
   failureShown = true;
   state.failed = true;
   state.paused = true;
@@ -761,7 +761,6 @@ function handleSceneAction(action) {
   if (action === "choose-101") chooseRoom("101");
   if (action === "choose-105") chooseRoom("105");
   if (action === "use-computer") openComputerTerminal();
-  if (action === "go-computer-lab") transitionTo("computerLab");
   if (action === "go-reading-room-entrance") goToReadingRoomEntrance();
   if (action === "enter-reading-room") enterReadingRoom();
   if (action === "inspect-b17") inspectB17Shelf();
@@ -790,7 +789,7 @@ $("#modal").addEventListener("click", (event) => {
 });
 
 window.setInterval(() => {
-  if (!state.started || state.paused || state.failed || state.chapterComplete) return;
+  if (!state.started || state.paused || state.failed) return;
   state.elapsed += 1;
   if (state.elapsed > 0 && state.elapsed % 90 === 0) {
     state.zombieDistance = Math.max(0, state.zombieDistance - 4);
@@ -821,7 +820,6 @@ function registerWebMCP() {
           zombieDistanceMeters: state.zombieDistance,
           bites: state.bites,
           inventory: state.inventory.map((id) => itemData[id].name),
-          chapterComplete: state.chapterComplete,
         };
       },
     })).catch(() => {});
