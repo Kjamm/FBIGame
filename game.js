@@ -7,6 +7,7 @@ const initialState = {
   started: false,
   paused: false,
   failed: false,
+  audioEnabled: true,
   elapsed: 0,
   scene: "lobby",
   letterRead: false,
@@ -131,6 +132,8 @@ const virtualFileSystem = {
 
 let state = freshState();
 let failureShown = false;
+let audioContext = null;
+let bgmNodes = [];
 
 function freshState() {
   return {
@@ -181,9 +184,142 @@ function formatTime(elapsed) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function updateSoundButton() {
+  const button = $("#sound-button");
+  if (!button) return;
+  const label = state.audioEnabled ? "배경음악 끄기" : "배경음악 켜기";
+  button.classList.toggle("active", state.audioEnabled);
+  button.setAttribute("aria-pressed", String(state.audioEnabled));
+  button.setAttribute("aria-label", label);
+  button.title = label;
+}
+
+function createNoiseBuffer(context, seconds = 5) {
+  const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
+  const samples = buffer.getChannelData(0);
+  let previous = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const random = Math.random() * 2 - 1;
+    previous = (previous + random * 0.035) / 1.018;
+    samples[index] = previous;
+  }
+  return buffer;
+}
+
+function startBgm() {
+  if (!state.audioEnabled || state.paused) return;
+
+  if (audioContext) {
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+    return;
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  try {
+    const context = new AudioContextClass();
+    const master = context.createGain();
+    const lowpass = context.createBiquadFilter();
+    const droneGain = context.createGain();
+    const subGain = context.createGain();
+    const noiseGain = context.createGain();
+    const noiseFilter = context.createBiquadFilter();
+    const pulseGain = context.createGain();
+    const pulseLfoGain = context.createGain();
+    const drone = context.createOscillator();
+    const subDrone = context.createOscillator();
+    const pulse = context.createOscillator();
+    const pulseLfo = context.createOscillator();
+    const noise = context.createBufferSource();
+
+    master.gain.setValueAtTime(0.045, context.currentTime);
+    master.connect(context.destination);
+
+    lowpass.type = "lowpass";
+    lowpass.frequency.setValueAtTime(420, context.currentTime);
+    lowpass.Q.setValueAtTime(0.8, context.currentTime);
+    lowpass.connect(master);
+
+    drone.type = "sawtooth";
+    drone.frequency.setValueAtTime(43.65, context.currentTime);
+    drone.detune.setValueAtTime(-8, context.currentTime);
+    droneGain.gain.setValueAtTime(0.17, context.currentTime);
+    drone.connect(droneGain);
+    droneGain.connect(lowpass);
+
+    subDrone.type = "triangle";
+    subDrone.frequency.setValueAtTime(65.41, context.currentTime);
+    subDrone.detune.setValueAtTime(6, context.currentTime);
+    subGain.gain.setValueAtTime(0.09, context.currentTime);
+    subDrone.connect(subGain);
+    subGain.connect(lowpass);
+
+    pulse.type = "sine";
+    pulse.frequency.setValueAtTime(32.7, context.currentTime);
+    pulseGain.gain.setValueAtTime(0.025, context.currentTime);
+    pulse.connect(pulseGain);
+    pulseGain.connect(master);
+
+    pulseLfo.type = "sine";
+    pulseLfo.frequency.setValueAtTime(0.42, context.currentTime);
+    pulseLfoGain.gain.setValueAtTime(0.022, context.currentTime);
+    pulseLfo.connect(pulseLfoGain);
+    pulseLfoGain.connect(pulseGain.gain);
+
+    noise.buffer = createNoiseBuffer(context);
+    noise.loop = true;
+    noiseFilter.type = "lowpass";
+    noiseFilter.frequency.setValueAtTime(260, context.currentTime);
+    noiseGain.gain.setValueAtTime(0.025, context.currentTime);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(master);
+
+    [drone, subDrone, pulse, pulseLfo, noise].forEach((source) => source.start());
+    audioContext = context;
+    bgmNodes = [drone, subDrone, pulse, pulseLfo, noise, droneGain, subGain, pulseGain, pulseLfoGain, noiseFilter, noiseGain, lowpass, master];
+  } catch {
+    audioContext = null;
+    bgmNodes = [];
+  }
+}
+
+function suspendBgm() {
+  if (audioContext?.state === "running") {
+    audioContext.suspend().catch(() => {});
+  }
+}
+
+function stopBgm() {
+  bgmNodes.forEach((node) => {
+    try {
+      if (typeof node.stop === "function") node.stop();
+      node.disconnect();
+    } catch {
+      // 이미 정지된 오디오 노드는 건너뛴다.
+    }
+  });
+  bgmNodes = [];
+  if (audioContext) audioContext.close().catch(() => {});
+  audioContext = null;
+}
+
+function toggleBgm() {
+  state.audioEnabled = !state.audioEnabled;
+  if (state.audioEnabled) startBgm();
+  else stopBgm();
+  updateSoundButton();
+  saveState();
+}
+
 function startGame(reset = false) {
   if (reset) {
+    const audioEnabled = state.audioEnabled;
     state = freshState();
+    state.audioEnabled = audioEnabled;
     failureShown = false;
   }
   state.started = true;
@@ -193,6 +329,7 @@ function startGame(reset = false) {
   $("#pause-overlay").hidden = true;
   saveState();
   render();
+  startBgm();
 }
 
 function objectiveText() {
@@ -306,6 +443,7 @@ function render() {
   $("#objective").textContent = objectiveText();
   $("#activity").textContent = state.activity;
   $("#bite-pips").querySelectorAll("i").forEach((pip, index) => pip.classList.toggle("active", index < state.bites));
+  updateSoundButton();
   renderScene();
   renderInventory();
 }
@@ -706,6 +844,7 @@ function showFailure() {
   failureShown = true;
   state.failed = true;
   state.paused = true;
+  suspendBgm();
   saveState();
   showModal(modalFrame({
     code: "GAME OVER · TIME EXPIRED",
@@ -723,6 +862,7 @@ function triggerZombieAttack() {
   state.bites += 1;
   state.zombieDistance = 60;
   state.paused = true;
+  suspendBgm();
   saveState();
   render();
 
@@ -751,6 +891,7 @@ function triggerZombieAttack() {
     state.paused = false;
     closeModal();
     saveState();
+    startBgm();
   });
 }
 
@@ -775,13 +916,16 @@ $("#hotspots").addEventListener("click", (event) => {
 $("#pause-button").addEventListener("click", () => {
   state.paused = true;
   $("#pause-overlay").hidden = false;
+  suspendBgm();
   saveState();
 });
 $("#resume-button").addEventListener("click", () => {
   state.paused = false;
   $("#pause-overlay").hidden = true;
   saveState();
+  startBgm();
 });
+$("#sound-button").addEventListener("click", toggleBgm);
 $("#escape-button").addEventListener("click", escapeWrongRoom);
 $("#log-button").addEventListener("click", showActivityLog);
 $("#modal").addEventListener("click", (event) => {

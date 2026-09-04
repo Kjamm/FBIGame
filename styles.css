@@ -61,6 +61,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 #bite-pips i { width: 0.72rem; height: 0.72rem; border: 1px solid #59605d; border-radius: 50%; }
 #bite-pips i.active { border-color: var(--red); background: var(--red); box-shadow: 0 0 12px rgb(240 68 68 / 0.7); }
 .hud-button { width: 2.7rem; height: 2.7rem; border: 1px solid var(--line); background: #111617; cursor: pointer; }
+.sound-button { position: relative; color: #6e7772; transition: border-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+.sound-button span { font-size: 1.15rem; }
+.sound-button.active { border-color: rgb(185 255 56 / 0.62); color: var(--acid); box-shadow: inset 0 0 14px rgb(185 255 56 / 0.08), 0 0 12px rgb(185 255 56 / 0.08); }
+.sound-button:not(.active)::after { content: ""; position: absolute; left: 0.58rem; top: 1.27rem; width: 1.45rem; height: 2px; transform: rotate(-45deg); background: var(--red); box-shadow: 0 0 5px rgb(255 59 50 / 0.45); }
 
 .scene-shell { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; min-height: calc(100vh - 5rem); }
 .scene { position: relative; min-height: calc(100vh - 5rem); overflow: hidden; background: #030505; }
