@@ -134,6 +134,8 @@ let state = freshState();
 let failureShown = false;
 let audioContext = null;
 let bgmNodes = [];
+const mobileLayout = window.matchMedia("(max-width: 560px)");
+let inventoryExpanded = !mobileLayout.matches;
 
 function freshState() {
   return {
@@ -370,6 +372,26 @@ function renderInventory() {
   container.querySelectorAll("[data-item]").forEach((button) => {
     button.addEventListener("click", () => inspectItem(button.dataset.item));
   });
+}
+
+function updateInventoryPanel() {
+  const panel = $(".inventory-bar");
+  const toggle = $("#inventory-toggle");
+  const collapsed = mobileLayout.matches && !inventoryExpanded;
+  panel.classList.toggle("collapsed", collapsed);
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.setAttribute("aria-label", collapsed ? "인벤토리 펼치기" : "인벤토리 접기");
+}
+
+function toggleInventoryPanel() {
+  if (!mobileLayout.matches) return;
+  inventoryExpanded = !inventoryExpanded;
+  updateInventoryPanel();
+}
+
+function handleLayoutChange(event) {
+  inventoryExpanded = !event.matches;
+  updateInventoryPanel();
 }
 
 function renderHotspots() {
@@ -928,6 +950,7 @@ $("#resume-button").addEventListener("click", () => {
 $("#sound-button").addEventListener("click", toggleBgm);
 $("#escape-button").addEventListener("click", escapeWrongRoom);
 $("#log-button").addEventListener("click", showActivityLog);
+$("#inventory-toggle").addEventListener("click", toggleInventoryPanel);
 $("#modal").addEventListener("click", (event) => {
   if (event.target === $("#modal")) closeModal();
 });
@@ -974,4 +997,7 @@ function registerWebMCP() {
 
 loadState();
 render();
+updateInventoryPanel();
+if (mobileLayout.addEventListener) mobileLayout.addEventListener("change", handleLayoutChange);
+else mobileLayout.addListener?.(handleLayoutChange);
 registerWebMCP();
