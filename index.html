@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#050708" />
+    <meta name="description" content="충남대학교 생명시스템과학대학을 배경으로 한 생명과학 좀비 방탈출 게임" />
+    <title>생정융: 좀비 바이러스로부터 탈출하라</title>
+    <link rel="preload" href="assets/images/cnu-lobby-outbreak.png" as="image" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="game.js" defer></script>
+  </head>
+  <body>
+    <section class="title-screen" id="title-screen" aria-labelledby="game-title">
+      <img class="title-backdrop" src="assets/images/cnu-lobby-outbreak.png" alt="어둠에 잠긴 생명시스템과학대학 로비" />
+      <div class="title-shade"></div>
+      <div class="title-content">
+        <p class="chapter-code">CNU · BIOHAZARD INCIDENT 01</p>
+        <h1 id="game-title"><span>생정융</span>좀비 바이러스로부터<br />탈출하라</h1>
+        <div class="title-brief">
+          <strong>기업 탐방에서 돌아온 순간,<br />생명대는 이미 봉쇄되어 있었다.</strong>
+          <p>백신을 완성할 수 있는 사람은 안에 남은 학생들뿐이다.</p>
+        </div>
+        <div class="title-actions">
+          <button class="primary-button" id="new-game-button" type="button">생명대로 들어간다 <span>→</span></button>
+          <button class="ghost-button" id="continue-button" type="button" hidden>이어서 플레이</button>
+        </div>
+        <p class="title-meta">60 MIN · GROUP PLAY · AUTO SAVE</p>
+      </div>
+      <div class="danger-tape" aria-hidden="true">BIOHAZARD　//　DO NOT ENTER　//　BIOHAZARD　//　DO NOT ENTER</div>
+    </section>
+
+    <div class="game" id="game" hidden>
+      <header class="hud">
+        <div class="hud-brand">
+          <span class="hazard-mark" aria-hidden="true">☣</span>
+          <div><strong>생정융</strong><small id="location-label">1F · 로비</small></div>
+        </div>
+
+        <div class="hud-center">
+          <div class="timer"><small>백신 배포까지</small><strong id="timer">60:00</strong></div>
+          <div class="objective"><small>현재 목표</small><strong id="objective">주변을 조사하라</strong></div>
+        </div>
+
+        <div class="hud-status">
+          <div class="bite-meter" aria-label="감염 위험">
+            <small>물림</small>
+            <div id="bite-pips"><i></i><i></i><i></i></div>
+          </div>
+          <button class="hud-button" id="pause-button" type="button" aria-label="게임 일시정지">Ⅱ</button>
+        </div>
+      </header>
+
+      <main class="scene-shell">
+        <section class="scene" id="scene" aria-live="polite">
+          <img id="scene-image" src="assets/images/cnu-lobby-outbreak.png" alt="어둡고 버려진 생명시스템과학대학 로비" />
+          <div class="scene-grade" aria-hidden="true"></div>
+          <div class="outbreak-badge" aria-hidden="true"><i></i> OUTBREAK ACTIVE</div>
+
+          <div class="hotspots" id="hotspots">
+            <button class="hotspot paper-hotspot" data-action="inspect-letter" type="button">
+              <span class="pulse" aria-hidden="true"></span>
+              <span class="hotspot-label">떨어진 편지</span>
+            </button>
+          </div>
+
+          <div class="scene-caption">
+            <span id="scene-number">01</span>
+            <div><small>현재 장소</small><strong id="scene-name">생명시스템과학대학 로비</strong></div>
+          </div>
+        </section>
+
+        <aside class="inventory-bar" aria-label="인벤토리">
+          <div class="inventory-title"><span>SURVIVAL KIT</span><small id="item-count">1 / 6</small></div>
+          <div class="inventory-items" id="inventory-items"></div>
+          <button class="log-button" id="log-button" type="button"><span>!</span><div><small>최근 기록</small><strong id="activity">버스에서 가져온 캠퍼스 안내도가 있다.</strong></div></button>
+        </aside>
+      </main>
+    </div>
+
+    <div class="pause-overlay" id="pause-overlay" hidden>
+      <span class="hazard-mark" aria-hidden="true">☣</span>
+      <p>PAUSED</p>
+      <h2>숨을 고르는 중</h2>
+      <button class="primary-button" id="resume-button" type="button">계속 이동한다</button>
+    </div>
+
+    <div class="jumpscare" id="jumpscare" hidden aria-live="assertive">
+      <img src="assets/images/cnu-zombie-chase.png" alt="복도를 가득 메우며 달려오는 감염된 학생들" />
+      <div class="jumpscare-flash"></div>
+      <div class="jumpscare-content">
+        <p>WRONG ROOM</p>
+        <h2>뛰어!</h2>
+        <strong>좀비들이 문 안에서 쏟아져 나온다.</strong>
+        <button class="escape-button" id="escape-button" type="button">로비 방향으로 도망친다</button>
+      </div>
+    </div>
+
+    <dialog class="modal" id="modal">
+      <div id="modal-content"></div>
+    </dialog>
+  </body>
+</html>
