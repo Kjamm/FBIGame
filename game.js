@@ -26,12 +26,28 @@ const initialState = {
   shelfIlluminated: false,
   shelfNoteFound: false,
   shelfPuzzleSolved: false,
+  animalCenterStoryShown: false,
   infectedRatsInspected: false,
   microscopeInspected: false,
   microscopeObjective: 4,
   microscopeCoarseFocus: 2,
   microscopeFineFocus: 0,
   microscopeSolved: false,
+  drawerPuzzleSolved: false,
+  zombieSurgeActive: false,
+  barricadeInstalled: false,
+  barricadeDeadline: null,
+  barricadeTimeoutBiteTriggered: false,
+  researchFragmentFound: false,
+  journalUvRevealed: false,
+  journalPuzzleSolved: false,
+  securityRoomUnlocked: false,
+  securityDoorFailures: 0,
+  securityDoorBiteTriggered: false,
+  securityGuardResolved: false,
+  securityConsoleInspected: false,
+  culpritIdentified: false,
+  cctvArchiveSolved: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
@@ -60,6 +76,11 @@ const itemData = {
     name: "바리케이드",
     icon: "▥",
     description: "좀비 이동 차단",
+  },
+  "research-fragment": {
+    name: "손상된 연구일지",
+    icon: "≣",
+    description: "사고 전 마지막 기록",
   },
 };
 
@@ -106,6 +127,13 @@ const scenes = {
     name: "동물실험 연구센터",
     hud: "2F · 동물실험 연구센터",
   },
+  securityRoom: {
+    image: "assets/images/cnu-department-office.jpg",
+    alt: "사무용 책상과 여러 CCTV 화면이 켜진 어두운 생정융 과사무실",
+    number: "07",
+    name: "생정융 과사무실",
+    hud: "1F · 과사무실",
+  },
 };
 
 const virtualFileSystem = {
@@ -141,7 +169,7 @@ const virtualFileSystem = {
     directories: ["samples"],
     files: {
       "README.txt": "중요 기록은 숨김 파일로 전환했다. 숨김 항목까지 확인하려면 ls -a 를 입력하라.",
-      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17",
+      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17\nAUTHOR_AFFILIATION = 동물실험 연구센터\nSYSTEM_ALERT = 사고 발생 3분 후 연구 기록 대량 삭제",
     },
   },
   "/home/pc/Documents/research/2026/samples": {
@@ -195,9 +223,19 @@ function loadState() {
     if (state.terminalSolved) {
       addItem("terminal-note");
     }
-    if (state.shelfPuzzleSolved) {
+    if (state.shelfPuzzleSolved && !state.barricadeInstalled) {
       addItem("barricade");
+    } else if (state.barricadeInstalled) {
+      state.inventory = state.inventory.filter((item) => item !== "barricade");
+      state.researchFragmentFound = true;
     }
+    if (state.zombieSurgeActive && !state.barricadeInstalled && state.barricadeDeadline == null) {
+      state.barricadeDeadline = state.elapsed + 15;
+      state.barricadeTimeoutBiteTriggered = false;
+    }
+    if (state.barricadeInstalled) state.barricadeDeadline = null;
+    if (state.researchFragmentFound) addItem("research-fragment");
+    if (state.securityConsoleInspected) state.culpritIdentified = true;
     delete state.chapterComplete;
     delete state.readingRoomReached;
     delete state.microscopeFocus;
@@ -212,6 +250,22 @@ function formatTime(elapsed) {
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function barricadeSecondsRemaining() {
+  if (!state.zombieSurgeActive || state.barricadeInstalled || state.barricadeDeadline == null) return 0;
+  return Math.max(0, Number(state.barricadeDeadline) - state.elapsed);
+}
+
+function formatBarricadeCountdown() {
+  if (state.barricadeTimeoutBiteTriggered) return "시간 초과";
+  return `00:${String(barricadeSecondsRemaining()).padStart(2, "0")}`;
+}
+
+function updateBarricadeCountdownDisplays() {
+  document.querySelectorAll("[data-barricade-countdown]").forEach((element) => {
+    element.textContent = formatBarricadeCountdown();
+  });
 }
 
 function updateSoundButton() {
@@ -377,11 +431,22 @@ function renderInventory() {
   $("#item-count").textContent = `${state.inventory.length} / 6`;
   const cards = state.inventory.map((id) => {
     const item = itemData[id];
+    const description = id === "research-fragment"
+      ? state.cctvArchiveSolved
+        ? "다음 단서: C-07"
+        : state.culpritIdentified
+        ? "반입자: 학생회장"
+        : state.journalPuzzleSolved
+        ? "과사무실 코드 확보"
+        : state.journalUvRevealed
+          ? "UV 염기 퍼즐"
+          : "형광 반응 흔적"
+      : item.description;
     return `
       <button class="item${state.selectedItem === id ? " selected" : ""}" type="button" data-item="${id}">
         <span class="item-icon" aria-hidden="true">${item.icon}</span>
         <strong>${item.name}</strong>
-        <small>${item.description}</small>
+        <small>${description}</small>
       </button>`;
   });
   const emptySlots = Math.max(0, 4 - cards.length);
@@ -421,15 +486,26 @@ function renderHotspots() {
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">떨어진 편지</span>
         </button>` : ""}
-      ${state.letterRead ? `
+      ${state.letterRead && !(state.zombieSurgeActive && !state.barricadeInstalled) ? `
         <button class="hotspot hallway-hotspot room-hotspot" data-action="go-hallway" type="button">
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">1층 복도</span>
         </button>` : ""}
-      ${state.terminalSolved ? `
+      ${state.terminalSolved && !(state.zombieSurgeActive && !state.barricadeInstalled) ? `
         <button class="hotspot room-hotspot second-floor-hotspot" data-action="go-reading-room-entrance" type="button">
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">2층 자료열람실</span>
+        </button>` : ""}
+      ${state.journalPuzzleSolved && !(state.zombieSurgeActive && !state.barricadeInstalled) ? `
+        <button class="hotspot room-hotspot security-room-hotspot" data-action="enter-security-room" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">생정융 과사무실</span>
+        </button>` : ""}
+      ${state.zombieSurgeActive && !state.barricadeInstalled ? `
+        <div class="surge-scene-alert" role="status"><span>●</span> 바리케이드 설치 <strong data-barricade-countdown>${formatBarricadeCountdown()}</strong></div>
+        <button class="hotspot barricade-install-hotspot" data-action="install-barricade" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">바리케이드 설치</span>
         </button>` : ""}`;
   } else if (state.scene === "hallway") {
     container.innerHTML = `
@@ -449,17 +525,19 @@ function renderHotspots() {
       <button class="scene-back lab-back" data-action="go-hallway" type="button">← 복도</button>`;
   } else if (state.scene === "readingRoomEntrance") {
     container.innerHTML = `
-      <button class="hotspot reading-room-door-hotspot" data-action="enter-reading-room" type="button">
-        <span class="pulse" aria-hidden="true"></span>
-        <span class="hotspot-label">자료열람실 문</span>
-      </button>
-      ${state.shelfPuzzleSolved ? `
+      ${!state.zombieSurgeActive ? `
+        <button class="hotspot reading-room-door-hotspot" data-action="enter-reading-room" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">자료열람실 문</span>
+        </button>` : `
+        <div class="surge-scene-alert" role="status"><span>●</span> 1층 로비로 즉시 이동</div>`}
+      ${state.shelfPuzzleSolved && !state.zombieSurgeActive ? `
         <button class="hotspot lab-entrance-hotspot" data-action="inspect-lab-entrance" type="button">
           <span class="lab-glimmer" aria-hidden="true"></span>
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">동물실험 연구센터</span>
         </button>` : ""}
-      <button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
+      <button class="scene-back${state.zombieSurgeActive ? " emergency-back" : ""}" data-action="go-lobby" type="button">${state.zombieSurgeActive ? "← 1층 로비" : "← 로비"}</button>`;
   } else if (state.scene === "readingRoom") {
     container.innerHTML = `
       <button class="hotspot shelf-hotspot" data-action="inspect-b17" type="button">
@@ -478,6 +556,18 @@ function renderHotspots() {
         <span class="hotspot-label">감염된 실험쥐</span>
       </button>
       <button class="scene-back" data-action="go-reading-room-entrance" type="button">← 2층 복도</button>`;
+  } else if (state.scene === "securityRoom") {
+    container.innerHTML = `
+      ${state.securityGuardResolved ? `
+        <button class="hotspot security-console-hotspot" data-action="inspect-security-console" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">CCTV 콘솔</span>
+        </button>` : `
+        <button class="hotspot security-guard-hotspot" data-action="security-guard-encounter" type="button">
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">움직이는 그림자</span>
+        </button>`}
+      <button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   } else {
     container.innerHTML = `<button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   }
@@ -502,6 +592,7 @@ function render() {
   updateSoundButton();
   renderScene();
   renderInventory();
+  updateBarricadeCountdownDisplays();
 }
 
 function transitionTo(sceneName) {
@@ -792,7 +883,9 @@ function goToReadingRoomEntrance() {
       ? "자료열람실 밖으로 나오자 왼쪽 실험실 입구가 열려 있다. 안쪽에서 빛이 희미하게 반짝인다."
       : "자료열람실 출입문 앞으로 돌아왔다.");
   } else if (state.scene === "animalResearchCenter") {
-    setActivity("동물실험 연구센터에서 빠져나와 2층 복도로 돌아왔다. 감염된 실험쥐들의 울음소리가 문 너머로 들린다.");
+    setActivity(state.zombieSurgeActive
+      ? "2층 복도로 나왔다. 아래층에서 수많은 발소리와 비명이 들린다. 1층 로비로 서둘러야 한다."
+      : "동물실험 연구센터에서 빠져나와 2층 복도로 돌아왔다. 감염된 실험쥐들의 울음소리가 문 너머로 들린다.");
   } else {
     setActivity("터미널에서 찾은 단서를 따라 2층 212호 자료열람실 앞에 도착했다.");
     state.zombieDistance = Math.max(64, state.zombieDistance - 12);
@@ -804,14 +897,35 @@ function goToReadingRoomEntrance() {
 function inspectLabEntrance() {
   if (!state.shelfPuzzleSolved) return;
   closeModal();
-  setActivity("반짝이는 빛을 따라 동물실험 연구센터 안으로 들어왔다. 손상된 케이지 주변에 감염된 실험쥐들이 모여 있다.");
+  const showStory = !state.animalCenterStoryShown;
+  state.animalCenterStoryShown = true;
+  setActivity("101호 기록의 작성자 소속과 같은 동물실험 연구센터에 도착했다. 손상된 케이지 주변에 감염된 실험쥐들이 모여 있다.");
   saveState();
   transitionTo("animalResearchCenter");
+  if (showStory) {
+    window.setTimeout(() => {
+      if (state.scene === "animalResearchCenter") showAnimalCenterIntro();
+    }, 380);
+  }
+}
+
+function showAnimalCenterIntro() {
+  showModal(modalFrame({
+    code: "STORY FILE · CONNECTION 01",
+    title: "기록이 가리킨 연구실",
+    body: `
+      <div class="story-evidence">
+        <span class="story-evidence-icon" aria-hidden="true">⌘</span>
+        <div><small>101호 삭제 기록 · 작성자 소속</small><strong>동물실험 연구센터</strong></div>
+        <b>MATCH</b>
+      </div>
+      <p class="result-copy">컴퓨터에서 본 소속과 일치한다.<br />텅 빈 연구실에는 깨진 케이지와 중단된 현미경만 남아 있다.</p>`,
+  }));
 }
 
 function inspectInfectedRats() {
   state.infectedRatsInspected = true;
-  setActivity("바이러스에 감염된 실험쥐들이 깨진 케이지 주변에서 공격적으로 움직인다.");
+  setActivity("케이지 기록을 확인했다. 사람의 감염 보고보다 6시간 먼저 실험쥐의 이상 행동이 기록되어 있다.");
   saveState();
   render();
   showModal(modalFrame({
@@ -819,7 +933,12 @@ function inspectInfectedRats() {
     title: "감염된 실험쥐",
     body: `
       <div class="result-mark danger-mark" aria-hidden="true">☣</div>
-      <p class="result-copy">케이지의 안전 잠금이 부서져 있다.<br />탁하게 변한 눈과 공격적인 행동으로 보아 실험쥐들도 바이러스에 감염된 듯하다. 가까이 가지 않는 편이 좋겠다.</p>`,
+      <div class="incident-timeline" aria-label="감염 사건 시간 기록">
+        <div><small>사고 6시간 전</small><strong>실험쥐 이상 행동</strong></div>
+        <span aria-hidden="true">→</span>
+        <div class="danger"><small>사고 발생</small><strong>첫 사람 감염</strong></div>
+      </div>
+      <p class="result-copy">탁한 눈, 공격성 증가, 케이지 파손.<br />실험쥐의 이상 징후는 사람들이 감염되기 전부터 시작됐다.</p>`,
   }));
 }
 
@@ -861,7 +980,21 @@ function microscopePuzzleBody() {
         <div class="microscope-drawer open" aria-live="polite">
           <div class="drawer-cavity"><strong>서랍이 열렸다</strong><small>현미경 아래에서 잠금장치가 풀리는 소리가 났다.</small></div>
           <div class="drawer-front"><span></span></div>
-        </div>` : `
+        </div>
+        ${state.drawerPuzzleSolved ? `
+          <div class="drawer-puzzle-complete">
+            <span aria-hidden="true">✓</span>
+            <p><strong>문자 재조합 완료</strong><br />${state.barricadeInstalled ? "1층 로비의 출입구를 봉쇄했다." : "1층 로비로 이동해 바리케이드를 설치해야 한다."}</p>
+          </div>` : `
+          <div class="drawer-puzzle-card">
+            <p><span>RECOVERY KEY</span> 연구 자료 복구용 보안 문구가 적힌 종이다.</p>
+            <img src="assets/images/drawer-word-puzzle-v2.jpg" alt="N E W D O O R 일곱 글자를 모두 재조합해 한 단어를 만드는 생물안전 연구 기록지" />
+            <form class="answer-form drawer-answer-form" id="drawer-puzzle-form" autocomplete="off">
+              <label for="drawer-puzzle-answer">보안 복구 문구 입력</label>
+              <div><input id="drawer-puzzle-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="정답 입력" /><button type="submit">확인</button></div>
+              <p id="drawer-puzzle-feedback">알파벳은 모두 한 번씩 사용해야 한다.</p>
+            </form>
+          </div>`}` : `
         <div class="focus-console">
           <div class="magnification-formula" aria-live="polite">
             <span><small>접안렌즈</small><b>10×</b></span><i>×</i>
@@ -938,13 +1071,67 @@ function openMicroscopePuzzle() {
   }));
   $("#modal").classList.add("microscope-modal");
 
-  if (state.microscopeSolved) return;
+  if (state.microscopeSolved) {
+    if (!state.drawerPuzzleSolved) {
+      $("#drawer-puzzle-form").addEventListener("submit", checkDrawerPuzzleAnswer);
+      $("#drawer-puzzle-answer").focus();
+    }
+    return;
+  }
   document.querySelectorAll("[data-objective]").forEach((button) => {
     button.addEventListener("click", () => setMicroscopeObjective(button.dataset.objective));
   });
   document.querySelectorAll("[data-focus-control]").forEach((button) => {
     button.addEventListener("click", () => adjustMicroscopeFocus(button.dataset.focusControl, Number(button.dataset.focusDirection)));
   });
+}
+
+function checkDrawerPuzzleAnswer(event) {
+  event.preventDefault();
+  const input = $("#drawer-puzzle-answer");
+  const feedback = $("#drawer-puzzle-feedback");
+  const answer = input.value.toUpperCase().replace(/[^A-Z]/g, "");
+  if (answer !== "ONEWORD") {
+    input.classList.remove("wrong");
+    void input.offsetWidth;
+    input.classList.add("wrong");
+    feedback.textContent = "알파벳의 순서가 맞지 않는다.";
+    feedback.classList.add("error");
+    return;
+  }
+
+  state.drawerPuzzleSolved = true;
+  state.zombieSurgeActive = true;
+  state.barricadeDeadline = state.elapsed + 15;
+  state.barricadeTimeoutBiteTriggered = false;
+  state.zombieDistance = 24;
+  setActivity("1층 로비 쪽에서 대규모 좀비 무리가 감지됐다. 15초 안에 바리케이드를 설치해야 한다.");
+  saveState();
+  render();
+  if (navigator.vibrate) navigator.vibrate([180, 70, 180, 70, 360]);
+  showZombieSurgeAlert();
+}
+
+function showZombieSurgeAlert() {
+  $("#modal").classList.remove("microscope-modal");
+  showModal(modalFrame({
+    code: "EMERGENCY · 1F SURGE",
+    title: "대규모 좀비 출현",
+    body: `
+      <div class="system-cascade" aria-label="연구 자료 복구와 격리문 연동 상태">
+        <div><span>✓</span><small>ARCHIVE RECOVERY</small><strong>연구 자료 복구 완료</strong></div>
+        <div class="danger"><span>!</span><small>QUARANTINE GATE · 1F</small><strong>격리문 연동 해제</strong></div>
+      </div>
+      <div class="zombie-surge-visual">
+        <img src="assets/images/cnu-zombie-chase.jpg" alt="1층 복도를 가득 메우며 몰려오는 대규모 좀비 무리" />
+        <div aria-hidden="true"><strong>1F</strong><span>감염체 신호 폭증</span></div>
+      </div>
+      <p class="result-copy"><strong>ONE WORD는 연구 자료 복구 암호였다.</strong><br />하지만 복구 장치와 연결된 1층 격리문까지 함께 열려 버렸다. 감염체들이 로비로 몰려든다.</p>
+      <div class="emergency-order"><small>긴급 행동</small><strong>15초 안에 1층 로비의 바리케이드를 설치하라.</strong></div>
+      <div class="barricade-countdown" role="timer" aria-live="polite"><small>설치 제한 시간</small><strong data-barricade-countdown>${formatBarricadeCountdown()}</strong><span>초과 시 좀비에게 1회 물린다</span></div>
+      <button class="primary-button letter-action" type="button" data-dismiss-surge>즉시 로비로 이동 <span>→</span></button>`,
+  }));
+  $("[data-dismiss-surge]").addEventListener("click", goToLobby);
 }
 
 function inspectMicroscope() {
@@ -955,6 +1142,223 @@ function inspectMicroscope() {
   saveState();
   render();
   openMicroscopePuzzle();
+}
+
+function goToLobby() {
+  closeModal();
+  if (state.zombieSurgeActive && !state.barricadeInstalled) {
+    setActivity("1층 로비에 도착했다. 출입구 너머로 좀비 무리가 몰려온다. 지금 바리케이드를 설치해야 한다.");
+    saveState();
+  }
+  transitionTo("lobby");
+}
+
+function openSecurityDoorKeypad() {
+  showModal(modalFrame({
+    code: "ACCESS CONTROL · DEPARTMENT OFFICE",
+    title: "과사무실 전자 잠금",
+    body: `
+      <div class="security-door-lock" aria-hidden="true"><span>▦</span><div><small>DEPARTMENT OFFICE</small><strong>LOCKED</strong></div></div>
+      <p class="result-copy">문 옆 숫자 패드가 켜져 있다.<br />연구일지에서 복원한 네 자리 코드를 입력하자.</p>
+      <form class="answer-form security-keypad-form" id="security-keypad-form" autocomplete="off">
+        <label for="security-keypad-answer">출입 코드</label>
+        <div><input id="security-keypad-answer" name="answer" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" aria-describedby="security-keypad-feedback" /><button type="submit">해제</button></div>
+        <p id="security-keypad-feedback" aria-live="polite">오입력이 반복되면 침입 경보가 작동할 수 있다.</p>
+      </form>`,
+  }));
+  $("#security-keypad-form").addEventListener("submit", checkSecurityDoorCode);
+  $("#security-keypad-answer").focus();
+}
+
+function enterSecurityRoom() {
+  if (!state.journalPuzzleSolved) return;
+  if (!state.securityRoomUnlocked) {
+    openSecurityDoorKeypad();
+    return;
+  }
+  closeModal();
+  setActivity("생정융 과사무실로 들어왔다. 행정용 모니터 위 CCTV 화면들이 건물 곳곳을 비추고 있다.");
+  saveState();
+  transitionTo("securityRoom");
+  if (!state.securityGuardResolved) {
+    window.setTimeout(() => {
+      if (state.scene === "securityRoom" && !state.securityGuardResolved) showSecurityGuardEncounter();
+    }, 380);
+  }
+}
+
+function checkSecurityDoorCode(event) {
+  event.preventDefault();
+  const input = $("#security-keypad-answer");
+  const feedback = $("#security-keypad-feedback");
+  if (input.value.trim() === "1420") {
+    state.securityRoomUnlocked = true;
+    setActivity("연구일지에서 얻은 코드 1420으로 생정융 과사무실 문을 열었다.");
+    saveState();
+    enterSecurityRoom();
+    return;
+  }
+
+  state.securityDoorFailures += 1;
+  input.classList.remove("wrong");
+  void input.offsetWidth;
+  input.classList.add("wrong");
+  input.value = "";
+  if (state.securityDoorFailures >= 3 && !state.securityDoorBiteTriggered) {
+    state.securityDoorBiteTriggered = true;
+    saveState();
+    triggerZombieAttack("security-alarm");
+    return;
+  }
+  const remaining = Math.max(0, 3 - state.securityDoorFailures);
+  feedback.textContent = remaining > 0
+    ? `ACCESS DENIED · 침입 경보까지 ${remaining}회`
+    : "ACCESS DENIED · 경보 회로가 이미 손상되어 있다.";
+  feedback.classList.add("error");
+  saveState();
+}
+
+function showSecurityGuardEncounter() {
+  showModal(modalFrame({
+    code: "SUDDEN ENCOUNTER · OFFICE",
+    title: "책상 뒤의 조교",
+    close: false,
+    body: `
+      <div class="zombie-surge-visual guard-encounter-visual">
+        <img src="assets/images/cnu-zombie-chase.jpg" alt="어둠 속에서 갑자기 달려드는 감염자" />
+        <div aria-hidden="true"><strong>!</strong><span>근거리 움직임 감지</span></div>
+      </div>
+      <div class="guard-symptoms"><span>검게 변한 혈관</span><span>불규칙한 경련</span><span>반응 없음</span></div>
+      <p class="result-copy">쓰러져 있던 조교가 갑자기 몸을 일으킨다.<br />문 옆에는 사무실 자동 잠금 버튼이 보인다.</p>
+      <div class="encounter-actions">
+        <button class="primary-button" type="button" data-guard-response="safe">잠금 버튼을 누른다</button>
+        <button class="danger-choice" type="button" data-guard-response="risk">조교에게 다가간다</button>
+      </div>`,
+  }));
+  document.querySelectorAll("[data-guard-response]").forEach((button) => {
+    button.addEventListener("click", () => resolveSecurityGuardEncounter(button.dataset.guardResponse));
+  });
+}
+
+function resolveSecurityGuardEncounter(response) {
+  state.securityGuardResolved = true;
+  if (response === "risk") {
+    setActivity("감염 징후를 보이던 조교가 팔을 물었다. 과사무실 안쪽 자동문은 뒤늦게 닫혔다.");
+    saveState();
+    render();
+    triggerZombieAttack("security-guard");
+    return;
+  }
+  closeModal();
+  state.zombieDistance = Math.max(state.zombieDistance, 68);
+  setActivity("잠금 버튼을 눌러 감염된 조교를 사무실 안쪽에 격리했다. CCTV 콘솔을 조사할 수 있다.");
+  saveState();
+  render();
+}
+
+function cctvArchiveBody() {
+  const blastResults = [
+    { sample: "A-03", cover: "82%", identity: "91.2%", evalue: "2e-12" },
+    { sample: "C-07", cover: "100%", identity: "100%", evalue: "0.0" },
+    { sample: "B-11", cover: "96%", identity: "97.4%", evalue: "4e-48" },
+    { sample: "D-02", cover: "71%", identity: "88.6%", evalue: "7e-08" },
+  ];
+  return `
+    <div class="story-evidence culprit-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>바이러스 샘플 반입자</small><strong>생정융 학생회장</strong></div><b>SUSPECT CONFIRMED</b></div>
+    <div class="cctv-culprit-still">
+      <img src="assets/images/cctv-student-president-silhouette.jpg" alt="냉각 상자를 들고 과사무실 복도를 지나는 중단발 여성 학생회장의 실루엣이 찍힌 CCTV 화면" />
+      <div><span>CAM 04 · IDENTITY MATCH</span><strong>생정융 학생회장</strong><small>학생회 완장 · 냉각 상자 소지 확인</small></div>
+      <b>MATCH 98%</b>
+    </div>
+    <div class="cctv-recovery-rule"><small>BIO-ARCHIVE RECOVERY · BLAST</small><strong>냉각 상자에서 검출된 바이러스 서열과 가장 신뢰도 높게 일치하는 보관 샘플을 찾아라.</strong><p>Query cover와 Identity는 높을수록, E-value는 0에 가까울수록 신뢰도가 높다.</p></div>
+    <div class="blast-query-card"><span>QUERY · OUTBREAK_SAMPLE</span><code>ATGGCCTTTGAACCTGGTTGCTAACGATCGTACGTA</code><small>Length: 36 bp · nucleotide BLAST</small></div>
+    <div class="blast-results-wrap">
+      <table class="blast-results" aria-label="바이러스 서열 BLAST 검색 결과">
+        <thead><tr><th>Sample ID</th><th>Query cover</th><th>Identity</th><th>E-value</th></tr></thead>
+        <tbody>${blastResults.map((result) => `<tr><th scope="row">${result.sample}</th><td>${result.cover}</td><td>${result.identity}</td><td>${result.evalue}</td></tr>`).join("")}</tbody>
+      </table>
+    </div>
+    ${state.cctvArchiveSolved ? `
+      <div class="journal-code-reveal cctv-route-reveal">
+        <span>BLAST MATCH · CCTV RESTORED</span><strong>C-07</strong><small>학생회장의 최종 이동 지점 · 3층 저온 시료 보관실</small>
+      </div>
+      <p class="result-copy cctv-result-copy">C-07 샘플의 서열이 현장 검체와 완전히 일치한다. 연결된 CCTV의 마지막 프레임에는 학생회장이 냉각 상자를 <strong>C-07 보관함</strong>에 넣는 모습이 남아 있다.</p>` : `
+      <form class="answer-form cctv-answer-form" id="cctv-archive-form" autocomplete="off">
+        <label for="cctv-archive-answer">가장 신뢰도 높은 Sample ID</label>
+        <div><input id="cctv-archive-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="4" placeholder="? - ? ?" aria-describedby="cctv-archive-feedback" /><button type="submit">BLAST 확인</button></div>
+        <p id="cctv-archive-feedback" aria-live="polite">세 지표를 함께 비교해 가장 정확한 일치 결과를 찾자.</p>
+      </form>`}`;
+}
+
+function inspectSecurityConsole() {
+  state.securityConsoleInspected = true;
+  state.culpritIdentified = true;
+  setActivity(state.cctvArchiveSolved
+    ? "BLAST 분석으로 복구된 영상은 학생회장이 향한 3층 저온 시료 보관실 C-07을 가리킨다."
+    : "CCTV 보안 서버가 바이러스 서열 인증을 요구한다. BLAST 결과에서 가장 신뢰도 높은 샘플을 찾아야 한다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: state.cctvArchiveSolved ? "BLAST MATCH · CCTV RESTORED" : "BIO-CCTV LINK · BLAST SEARCH",
+    title: state.cctvArchiveSolved ? "복구된 이동 경로" : "바이러스 서열 인증",
+    body: cctvArchiveBody(),
+  }));
+  $("#modal").classList.add("evidence-modal");
+  const form = $("#cctv-archive-form");
+  if (form) {
+    form.addEventListener("submit", checkCctvArchiveCode);
+    $("#cctv-archive-answer").focus();
+  }
+}
+
+function checkCctvArchiveCode(event) {
+  event.preventDefault();
+  const input = $("#cctv-archive-answer");
+  const feedback = $("#cctv-archive-feedback");
+  const answer = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (answer !== "C07") {
+    input.classList.remove("wrong");
+    void input.offsetWidth;
+    input.classList.add("wrong");
+    feedback.textContent = "서열 일치도가 부족하다. Query cover·Identity·E-value를 다시 비교하자.";
+    feedback.classList.add("error");
+    input.select();
+    if (navigator.vibrate) navigator.vibrate(100);
+    return;
+  }
+
+  state.cctvArchiveSolved = true;
+  setActivity("BLAST에서 현장 바이러스와 일치하는 C-07 샘플을 찾았다. 학생회장은 3층 저온 시료 보관실로 향했다.");
+  saveState();
+  render();
+  inspectSecurityConsole();
+}
+
+function installBarricade() {
+  if (!state.zombieSurgeActive || state.barricadeInstalled || !state.inventory.includes("barricade")) return;
+  state.barricadeInstalled = true;
+  state.zombieSurgeActive = false;
+  state.barricadeDeadline = null;
+  state.researchFragmentFound = true;
+  state.zombieDistance = Math.max(state.zombieDistance, 76);
+  state.inventory = state.inventory.filter((item) => item !== "barricade");
+  addItem("research-fragment");
+  if (state.selectedItem === "barricade") state.selectedItem = null;
+  setActivity("로비를 봉쇄한 뒤 바리케이드 아래에서 손상된 연구일지를 발견했다. 실험쥐가 최초 감염원은 아니었다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: "DEFENSE · LOBBY SEALED",
+    title: "바리케이드 설치 완료",
+    body: `
+      <div class="barricade-reward compact installed" aria-hidden="true"><span>▥</span></div>
+      <p class="result-copy">바리케이드가 출입구를 막았다. 철제 프레임 아래에 끼어 있던 손상된 연구일지 한 장이 드러난다.</p>
+      <div class="research-fragment-note">
+        <span>연구일지 · 마지막 기록</span>
+        <strong>“실험쥐는 감염원이 아니었다.<br />누군가 이미 감염된 바이러스를 이곳에 가져왔다.”</strong>
+      </div>
+      <div class="story-evidence compact"><span class="story-evidence-icon" aria-hidden="true">≣</span><div><small>새 증거 획득</small><strong>손상된 연구일지</strong></div><b>NEW</b></div>`,
+  }));
 }
 
 function enterReadingRoom() {
@@ -1060,6 +1464,7 @@ function checkShelfPuzzleAnswer(event) {
     body: `
       <div class="barricade-reward" aria-hidden="true"><span>▥</span></div>
       <p class="result-copy"><strong>정답 25.</strong><br />책장 아래 잠금 장치가 열리며 접이식 바리케이드가 나온다. 좀비의 이동 경로를 한 번 차단할 수 있다.</p>
+      <div class="emergency-protocol"><small>함께 발견된 비상 계획</small><strong>“격리 실패 시 1층 출입구를 우선 봉쇄할 것.”</strong></div>
       <div class="status-grid"><div><small>획득 아이템</small><strong>바리케이드</strong></div><div><small>용도</small><strong>이동 차단</strong></div><div><small>보관 위치</small><strong>인벤토리</strong></div></div>
       <button class="primary-button letter-action" type="button" data-close-reward>인벤토리에 넣는다</button>`,
   }));
@@ -1070,6 +1475,106 @@ function checkShelfPuzzleAnswer(event) {
 function escapeWrongRoom() {
   $("#jumpscare").hidden = true;
   triggerZombieAttack("wrong-room");
+}
+
+function renderDnaBases(sequence) {
+  return [...sequence].map((base) => `<b class="base base-${base.toLowerCase()}">${base}</b>`).join("");
+}
+
+function researchJournalBody() {
+  const hasLamp = state.inventory.includes("fluorescent-lamp");
+  if (!state.journalUvRevealed) {
+    return `
+      <div class="research-fragment-note inventory-note journal-dormant">
+        <span>연구일지 · 마지막 기록</span>
+        <strong>“실험쥐는 감염원이 아니었다.<br />누군가 이미 감염된 바이러스를 이곳에 가져왔다.”</strong>
+        <small>나머지 페이지는 찢겨 나갔다. 종이 섬유 사이에 희미한 얼룩이 남아 있다.</small>
+        <div class="uv-ghost-marks" aria-hidden="true">A · T &nbsp; G · C &nbsp; 01—04</div>
+      </div>
+      ${hasLamp ? `
+        <button class="primary-button letter-action lamp-journal-action" type="button" data-use-lamp-on-journal><span aria-hidden="true">▰</span> 형광등을 비춰 본다</button>` : `
+        <div class="shelf-instruction"><span aria-hidden="true">?</span><p><strong>희미한 흔적이 있다.</strong><br />빛을 비출 만한 물건이 필요하다.</p></div>`}`;
+  }
+
+  const samples = [
+    { id: "01", top: "ATGC", bottom: "TACC" },
+    { id: "02", top: "ATGC", bottom: "ATGC" },
+    { id: "03", top: "AAGG", bottom: "TACG" },
+    { id: "04", top: "CGTA", bottom: "GCAT" },
+  ];
+  return `
+    <div class="uv-journal">
+      <header><span>UV REVEAL · ACCESS KEY</span><strong>형광 잉크로 숨겨진 기록</strong></header>
+      <div class="base-pair-rule" aria-label="DNA 상보적 염기쌍 규칙"><span><b class="base base-a">A</b> ↔ <b class="base base-t">T</b></span><span><b class="base base-g">G</b> ↔ <b class="base base-c">C</b></span></div>
+      <p class="uv-puzzle-guide">각 조각에서 <strong>서로 정상적으로 결합할 수 없는 염기쌍의 개수</strong>를 세고, 01부터 차례대로 입력하라.</p>
+      <div class="dna-sample-grid">
+        ${samples.map((sample) => `
+          <section class="dna-sample" role="img" aria-label="DNA 조각 ${sample.id}. 위쪽 가닥 ${sample.top}, 아래쪽 가닥 ${sample.bottom}">
+            <small>FRAGMENT ${sample.id}</small>
+            <div class="dna-strand"><i>5′</i>${renderDnaBases(sample.top)}<i>3′</i></div>
+            <div class="dna-bonds" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="dna-strand"><i>3′</i>${renderDnaBases(sample.bottom)}<i>5′</i></div>
+          </section>`).join("")}
+      </div>
+      ${state.journalPuzzleSolved ? `
+        <div class="journal-code-reveal">
+          <span>ACCESS GRANTED</span><strong>14 : 20</strong><small>다음 조사 지점 · 생정융 과사무실 CCTV 서버</small>
+        </div>` : `
+        <form class="answer-form journal-answer-form" id="journal-puzzle-form" autocomplete="off">
+          <label for="journal-puzzle-answer">FRAGMENT 01 → 04 · 4자리 코드</label>
+          <div><input id="journal-puzzle-answer" name="answer" type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" placeholder="0000" aria-describedby="journal-puzzle-feedback" /><button type="submit">확인</button></div>
+          <p id="journal-puzzle-feedback" aria-live="polite">각 세로 열의 두 염기가 상보적인지 확인하자.</p>
+        </form>`}
+    </div>`;
+}
+
+function openResearchJournal() {
+  showModal(modalFrame({
+    code: state.journalUvRevealed ? "EVIDENCE · UV ANALYSIS" : "EVIDENCE · DAMAGED LOG",
+    title: state.journalPuzzleSolved ? "복원된 연구일지" : state.journalUvRevealed ? "형광 염기 퍼즐" : "손상된 연구일지",
+    body: researchJournalBody(),
+  }));
+  $("#modal").classList.add("evidence-modal");
+  const lampButton = $("[data-use-lamp-on-journal]");
+  if (lampButton) lampButton.addEventListener("click", revealJournalUvPuzzle);
+  const form = $("#journal-puzzle-form");
+  if (form) {
+    form.addEventListener("submit", checkJournalPuzzleAnswer);
+    $("#journal-puzzle-answer").focus();
+  }
+}
+
+function revealJournalUvPuzzle() {
+  if (!state.inventory.includes("fluorescent-lamp")) return;
+  state.fluorescentOn = true;
+  state.journalUvRevealed = true;
+  setActivity("형광등을 비추자 연구일지 위로 네 개의 DNA 염기쌍 조각이 나타났다.");
+  saveState();
+  render();
+  openResearchJournal();
+}
+
+function checkJournalPuzzleAnswer(event) {
+  event.preventDefault();
+  const input = $("#journal-puzzle-answer");
+  const feedback = $("#journal-puzzle-feedback");
+  const answer = input.value.replace(/\D/g, "");
+  if (answer !== "1420") {
+    input.classList.remove("wrong");
+    void input.offsetWidth;
+    input.classList.add("wrong");
+    feedback.textContent = "코드가 반응하지 않는다. 불일치 염기쌍의 개수를 다시 세어 보자.";
+    feedback.classList.add("error");
+    input.select();
+    if (navigator.vibrate) navigator.vibrate(100);
+    return;
+  }
+
+  state.journalPuzzleSolved = true;
+  setActivity("염기 퍼즐에서 코드 1420을 복원했다. 기록은 생정융 과사무실 CCTV 서버를 가리킨다.");
+  saveState();
+  render();
+  openResearchJournal();
 }
 
 function inspectItem(id) {
@@ -1088,7 +1593,10 @@ function inspectItem(id) {
     showModal(modalFrame({
       code: "RECOVERED FILE · NEXT LOCATION",
       title: "위치 단서",
-      body: `<div class="result-mark">⌘</div><p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />확인 지점: B-17 책장</p>`,
+      body: `
+        <div class="result-mark">⌘</div>
+        <p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />확인 지점: B-17 책장</p>
+        <div class="story-evidence"><span class="story-evidence-icon" aria-hidden="true">!</span><div><small>작성자 소속</small><strong>동물실험 연구센터</strong></div><b>삭제 감지 · 사고 +03분</b></div>`,
     }));
     return;
   }
@@ -1098,6 +1606,10 @@ function inspectItem(id) {
       title: "접이식 바리케이드",
       body: `<div class="barricade-reward compact" aria-hidden="true"><span>▥</span></div><p class="result-copy">B-17 숫자 문제를 풀고 얻은 바리케이드다.<br />좀비의 이동 경로를 한 번 차단할 수 있다.</p>`,
     }));
+    return;
+  }
+  if (id === "research-fragment") {
+    openResearchJournal();
     return;
   }
   state.fluorescentOn = true;
@@ -1117,6 +1629,7 @@ function openMiniMap() {
   const computerLabCurrent = state.scene === "computerLab";
   const readingRoomCurrent = state.scene === "readingRoomEntrance" || state.scene === "readingRoom";
   const animalCenterCurrent = state.scene === "animalResearchCenter";
+  const securityRoomCurrent = state.scene === "securityRoom";
   showModal(modalFrame({
     code: "ITEM · CAMPUS MINIMAP",
     title: "좀비 위치 탐지",
@@ -1129,7 +1642,8 @@ function openMiniMap() {
         <div class="map-node node-lobby${lobbyCurrent ? " current" : ""}">로비</div>
         <div class="map-node node-reading-room${readingRoomCurrent ? " current" : ""}">2층<br />자료열람실</div>
         ${state.shelfPuzzleSolved ? `<div class="map-node node-animal-center${animalCenterCurrent ? " current" : ""}">동물실험<br />연구센터</div>` : ""}
-        <div class="zombie-signal"><strong>${state.zombieDistance}m</strong><small>좀비 무리</small></div>
+        ${state.journalPuzzleSolved ? `<div class="map-node node-security-room${securityRoomCurrent ? " current" : ""}">생정융<br />과사무실</div>` : ""}
+        <div class="zombie-signal${state.zombieSurgeActive ? " surge" : ""}"><strong>${state.zombieDistance}m</strong><small>${state.zombieSurgeActive ? "1F 대규모 감지" : "좀비 무리"}</small></div>
       </div>
       <div class="status-grid"><div><small>현재 위치</small><strong>${scenes[state.scene].hud}</strong></div><div><small>최근접 좀비</small><strong>${state.zombieDistance}m</strong></div><div><small>물림</small><strong>${state.bites} / 3</strong></div></div>`,
   }));
@@ -1167,13 +1681,43 @@ function showFailure() {
 }
 
 function triggerZombieAttack(source = "distance") {
+  const attackDetails = {
+    "wrong-room": {
+      code: "WRONG ROOM",
+      activity: "105호에서 탈출하는 순간 좀비에게 물렸다.",
+      copy: "105호에서 빠져나오던 중 팔을 물렸다.",
+    },
+    "security-alarm": {
+      code: "SECURITY ALARM",
+      activity: "과사무실 출입 코드를 반복해서 틀리자 경보가 울렸고, 소리를 따라온 좀비에게 물렸다.",
+      copy: "침입 경보를 듣고 나타난 좀비가 옆 복도에서 달려들어 팔을 물었다.",
+    },
+    "security-guard": {
+      code: "INFECTED ASSISTANT",
+      activity: "감염된 조교에게 다가갔다가 손목을 물렸다.",
+      copy: "조교의 상태를 확인하려 다가간 순간 손목을 물렸다.",
+    },
+    "barricade-timeout": {
+      code: "BARRICADE TIMEOUT",
+      activity: "바리케이드 설치가 늦어 로비로 침입한 좀비에게 물렸다.",
+      copy: "15초가 지나 출입구가 뚫렸다. 바리케이드를 펼치던 중 좀비에게 팔을 물렸다.",
+    },
+    distance: {
+      code: "ATTACK",
+      activity: "좀비 무리와의 거리가 0m가 되어 공격당했다.",
+      copy: "좀비 무리와의 거리가 0m가 되었다.",
+    },
+  };
+  const detail = attackDetails[source] || attackDetails.distance;
   state.bites += 1;
-  state.zombieDistance = source === "wrong-room" ? Math.max(58, 74 - state.wrongDoorCount * 5) : 60;
+  state.zombieDistance = source === "wrong-room"
+    ? Math.max(58, 74 - state.wrongDoorCount * 5)
+    : source === "barricade-timeout"
+      ? 8
+      : 60;
   state.paused = true;
   suspendBgm();
-  if (source === "wrong-room") {
-    setActivity(`105호에서 탈출하는 순간 좀비에게 물렸다. 현재 물림 ${state.bites}/3.`);
-  }
+  setActivity(`${detail.activity} 현재 물림 ${state.bites}/3.`);
   saveState();
   render();
 
@@ -1193,10 +1737,10 @@ function triggerZombieAttack(source = "distance") {
   }
 
   showModal(modalFrame({
-    code: source === "wrong-room" ? `WRONG ROOM · BITE ${state.bites}/3` : `ATTACK · BITE ${state.bites}/3`,
+    code: `${detail.code} · BITE ${state.bites}/3`,
     title: "좀비에게 물렸다",
     close: false,
-    body: `<div class="result-mark danger-mark">${state.bites}</div><p class="result-copy">${source === "wrong-room" ? "105호에서 빠져나오던 중 팔을 물렸다." : "좀비 무리와의 거리가 0m가 되었다."}<br />세 번 물리면 감염된다. 서둘러 이동해야 한다.</p><button class="primary-button letter-action" type="button" data-survive>계속 움직인다</button>`,
+    body: `<div class="result-mark danger-mark">${state.bites}</div><p class="result-copy">${detail.copy}<br />세 번 물리면 감염된다. 서둘러 이동해야 한다.</p><button class="primary-button letter-action" type="button" data-survive>계속 움직인다</button>`,
   }));
   $("[data-survive]").addEventListener("click", () => {
     state.paused = false;
@@ -1209,7 +1753,7 @@ function triggerZombieAttack(source = "distance") {
 function handleSceneAction(action) {
   if (action === "inspect-letter") inspectLetter();
   if (action === "go-hallway") transitionTo("hallway");
-  if (action === "go-lobby") transitionTo("lobby");
+  if (action === "go-lobby") goToLobby();
   if (action === "choose-101") chooseRoom("101");
   if (action === "choose-105") chooseRoom("105");
   if (action === "use-computer") openComputerTerminal();
@@ -1219,6 +1763,10 @@ function handleSceneAction(action) {
   if (action === "inspect-lab-entrance") inspectLabEntrance();
   if (action === "inspect-infected-rats") inspectInfectedRats();
   if (action === "inspect-microscope") inspectMicroscope();
+  if (action === "install-barricade") installBarricade();
+  if (action === "enter-security-room") enterSecurityRoom();
+  if (action === "security-guard-encounter") showSecurityGuardEncounter();
+  if (action === "inspect-security-console") inspectSecurityConsole();
 }
 
 $("#new-game-button").addEventListener("click", () => startGame(true));
@@ -1244,7 +1792,7 @@ $("#escape-button").addEventListener("click", escapeWrongRoom);
 $("#log-button").addEventListener("click", showActivityLog);
 $("#inventory-toggle").addEventListener("click", toggleInventoryPanel);
 $("#modal").addEventListener("click", (event) => {
-  if (event.target === $("#modal")) closeModal();
+  if (event.target === $("#modal") && $("#modal [data-close-modal]")) closeModal();
 });
 
 window.setInterval(() => {
@@ -1255,6 +1803,12 @@ window.setInterval(() => {
   }
   if (state.elapsed % 5 === 0) saveState();
   render();
+  if (state.zombieSurgeActive && !state.barricadeInstalled && !state.barricadeTimeoutBiteTriggered && barricadeSecondsRemaining() <= 0) {
+    state.barricadeTimeoutBiteTriggered = true;
+    saveState();
+    triggerZombieAttack("barricade-timeout");
+    return;
+  }
   if (state.zombieDistance <= 0) {
     triggerZombieAttack();
     return;
