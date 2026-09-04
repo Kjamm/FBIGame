@@ -17,6 +17,10 @@ const initialState = {
   bites: 0,
   wrongDoorCount: 0,
   letterHints: 0,
+  terminalCwd: "/home/pc",
+  terminalSolved: false,
+  readingRoomReached: false,
+  b17Inspected: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
@@ -36,6 +40,11 @@ const itemData = {
     icon: "✉",
     description: "다시 읽기",
   },
+  "terminal-note": {
+    name: "위치 단서",
+    icon: "⌘",
+    description: "2층 독서실",
+  },
 };
 
 const scenes = {
@@ -53,12 +62,72 @@ const scenes = {
     name: "생명시스템과학대학 1층 복도",
     hud: "1F · 101—105",
   },
-  chapterEnd: {
-    image: "assets/images/cnu-hallway-101-105.png",
-    alt: "101호 문 앞의 어두운 생명시스템과학대학 복도",
+  computerLab: {
+    image: "assets/images/cnu-computer-lab.png",
+    alt: "여러 대의 컴퓨터 중 한 대만 켜진 어두운 101호 컴퓨터실",
     number: "03",
-    name: "101호 앞",
+    name: "101호 컴퓨터실",
     hud: "1F · 101호",
+  },
+  readingRoomEntrance: {
+    image: "assets/images/cnu-reading-room-entrance.png",
+    alt: "비상등이 켜진 생명시스템과학대학 2층 자료열람실 앞",
+    number: "04",
+    name: "2층 자료열람실 앞",
+    hud: "2F · 212호 앞",
+  },
+  readingRoom: {
+    image: "assets/images/cnu-reading-room-interior.png",
+    alt: "책상과 책장이 늘어선 어두운 2층 자료열람실 내부",
+    number: "05",
+    name: "2층 자료열람실",
+    hud: "2F · 자료열람실",
+  },
+};
+
+const virtualFileSystem = {
+  "/home/pc": {
+    directories: ["Desktop", "Documents", "Downloads"],
+    files: {},
+  },
+  "/home/pc/Desktop": {
+    directories: [],
+    files: { "schedule.txt": "기업 탐방 일정표뿐이다. 단서는 이곳에 없다." },
+  },
+  "/home/pc/Documents": {
+    directories: ["assignments", "research"],
+    files: {},
+  },
+  "/home/pc/Documents/assignments": {
+    directories: [],
+    files: { "biology_101.txt": "제출이 끝난 생명과학개론 과제다." },
+  },
+  "/home/pc/Documents/research": {
+    directories: ["2024", "2025", "2026"],
+    files: {},
+  },
+  "/home/pc/Documents/research/2024": {
+    directories: [],
+    files: { "closed.txt": "폐기된 연구 기록이다." },
+  },
+  "/home/pc/Documents/research/2025": {
+    directories: [],
+    files: { "closed.txt": "백신 연구 이전의 자료다." },
+  },
+  "/home/pc/Documents/research/2026": {
+    directories: ["samples"],
+    files: {
+      "README.txt": "중요 기록은 숨김 파일로 전환했다. 숨김 항목까지 확인하려면 ls -a 를 입력하라.",
+      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17\n그곳에 바이러스 구조 분석 기록을 숨겨두었다.",
+    },
+  },
+  "/home/pc/Documents/research/2026/samples": {
+    directories: [],
+    files: { "sample_00.dat": "손상된 검체 데이터다. 읽을 수 없다." },
+  },
+  "/home/pc/Downloads": {
+    directories: [],
+    files: { "installer.tmp": "불완전한 설치 파일이다." },
   },
 };
 
@@ -91,6 +160,16 @@ function loadState() {
       addItem("graduate-letter");
       addItem("fluorescent-lamp");
     }
+    if (state.scene === "chapterEnd" && !state.terminalSolved) {
+      state.scene = "computerLab";
+      state.chapterComplete = false;
+    }
+    if (!virtualFileSystem[state.terminalCwd]) state.terminalCwd = "/home/pc";
+    if (!scenes[state.scene]) state.scene = state.terminalSolved ? "computerLab" : "lobby";
+    if (state.terminalSolved) {
+      state.chapterComplete = false;
+      addItem("terminal-note");
+    }
     $("#continue-button").hidden = !state.started || state.failed;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
@@ -119,7 +198,11 @@ function startGame(reset = false) {
 }
 
 function objectiveText() {
-  if (state.chapterComplete) return "101호 안으로 들어갈 준비를 하라";
+  if (state.scene === "readingRoom") return state.b17Inspected ? "B-17에서 발견한 기록을 분석하라" : "B-17 책장을 조사하라";
+  if (state.scene === "readingRoomEntrance") return "자료열람실 문을 열고 안으로 들어가라";
+  if (state.terminalSolved && state.scene === "lobby") return "로비에서 2층 자료열람실로 이동하라";
+  if (state.terminalSolved) return "로비로 돌아가 2층으로 이동하라";
+  if (state.scene === "computerLab") return "불이 켜진 컴퓨터를 조사하라";
   if (state.scene === "hallway") return "편지가 가리킨 호실을 선택하라";
   if (state.letterRead) return "1층 복도로 이동하라";
   return "바닥에 떨어진 종이를 조사하라";
@@ -167,7 +250,8 @@ function renderHotspots() {
         <button class="hotspot hallway-hotspot room-hotspot" data-action="go-hallway" type="button">
           <span class="pulse" aria-hidden="true"></span>
           <span class="hotspot-label">1층 복도</span>
-        </button>` : ""}`;
+        </button>` : ""}
+      ${state.terminalSolved ? `<button class="scene-next lobby-floor-button" data-action="go-reading-room-entrance" type="button">2층 자료열람실로 이동 →</button>` : ""}`;
   } else if (state.scene === "hallway") {
     container.innerHTML = `
       <button class="hotspot room-hotspot door-101" data-action="choose-101" type="button">
@@ -177,6 +261,27 @@ function renderHotspots() {
         <span class="pulse" aria-hidden="true"></span><span class="hotspot-label">105</span>
       </button>
       <button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
+  } else if (state.scene === "computerLab") {
+    container.innerHTML = `
+      <button class="hotspot computer-hotspot" data-action="use-computer" type="button">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="hotspot-label">${state.terminalSolved ? "단서 확인" : "켜진 컴퓨터"}</span>
+      </button>
+      <button class="scene-back lab-back" data-action="go-hallway" type="button">← 복도</button>`;
+  } else if (state.scene === "readingRoomEntrance") {
+    container.innerHTML = `
+      <button class="hotspot reading-room-door-hotspot" data-action="enter-reading-room" type="button">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="hotspot-label">자료열람실 문</span>
+      </button>
+      <button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
+  } else if (state.scene === "readingRoom") {
+    container.innerHTML = `
+      <button class="hotspot shelf-hotspot" data-action="inspect-b17" type="button">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="hotspot-label">${state.b17Inspected ? "B-17 기록" : "B-17 책장"}</span>
+      </button>
+      <button class="scene-back" data-action="go-reading-room-entrance" type="button">← 출입문</button>`;
   } else {
     container.innerHTML = `<button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   }
@@ -234,6 +339,7 @@ function showModal(html) {
 
 function closeModal() {
   if ($("#modal").open) $("#modal").close();
+  $("#modal").classList.remove("terminal-modal");
 }
 
 function inspectLetter(fromInventory = false) {
@@ -303,33 +409,221 @@ function chooseRoom(room) {
     return;
   }
 
-  state.chapterComplete = true;
   state.zombieDistance = Math.max(state.zombieDistance, 82);
-  setActivity("편지의 숨은 숫자와 일치한다. 101호가 대학원생의 연구실이다.");
-  transitionTo("chapterEnd");
+  setActivity("편지의 숨은 숫자와 일치한다. 101호 안은 컴퓨터실이다.");
   saveState();
   showModal(modalFrame({
     code: "CORRECT LOCATION · 101",
-    title: "대학원생의 연구실",
+    title: "101호 컴퓨터실",
     close: false,
     body: `
       <div class="result-mark">✓</div>
-      <p class="result-copy">문장 속 어색한 글자에서 <strong>1 · 0 · 1</strong>을 찾아냈다.<br />문 너머에서 냉각 장치가 작동하는 소리가 들린다.</p>
-      <div class="status-grid"><div><small>현재 위치</small><strong>101호</strong></div><div><small>확보한 도구</small><strong>형광등</strong></div><div><small>다음 목표</small><strong>바이러스 구조</strong></div></div>
-      <button class="primary-button letter-action" type="button" data-finish-chapter>101호 문을 연다 <span>→</span></button>`,
+      <p class="result-copy">문장 속 어색한 글자에서 <strong>1 · 0 · 1</strong>을 찾아냈다.<br />문을 열자 컴퓨터가 줄지어 있고, 단 한 대의 화면만 켜져 있다.</p>
+      <div class="status-grid"><div><small>현재 위치</small><strong>101호</strong></div><div><small>공간</small><strong>컴퓨터실</strong></div><div><small>다음 목표</small><strong>켜진 PC 조사</strong></div></div>
+      <button class="primary-button letter-action" type="button" data-enter-computer-lab>컴퓨터실로 들어간다 <span>→</span></button>`,
   }));
-  $("[data-finish-chapter]").addEventListener("click", () => {
+  $("[data-enter-computer-lab]").addEventListener("click", () => {
     closeModal();
-    showModal(modalFrame({
-      code: "CHAPTER 01 · COMPLETE",
-      title: "다음 장소 준비 중",
-      body: `<p class="result-copy">로비와 1층 복도 구간을 완료했습니다.<br />다음에는 101호 내부의 바이러스 구조 분석 문제가 이어집니다.</p><button class="primary-button letter-action" type="button" data-return-lobby>로비로 돌아가기</button>`,
-    }));
-    $("[data-return-lobby]").addEventListener("click", () => {
-      closeModal();
-      transitionTo("lobby");
-    });
+    transitionTo("computerLab");
   });
+}
+
+let terminalLines = [];
+
+function resolveTerminalPath(input) {
+  if (!input || input === "~") return input === "~" ? "/home/pc" : state.terminalCwd;
+  const parts = input.startsWith("/") ? [] : state.terminalCwd.split("/").filter(Boolean);
+  input.split("/").filter(Boolean).forEach((part) => {
+    if (part === ".") return;
+    if (part === "..") {
+      if (parts.length > 2) parts.pop();
+      return;
+    }
+    parts.push(part);
+  });
+  return `/${parts.join("/")}`;
+}
+
+function terminalPromptPath() {
+  return state.terminalCwd === "/home/pc" ? "~" : state.terminalCwd.replace("/home/pc", "~");
+}
+
+function addTerminalLine(text, type = "output") {
+  terminalLines.push({ text, type });
+}
+
+function renderTerminalOutput() {
+  const output = $("#terminal-output");
+  if (!output) return;
+  output.innerHTML = "";
+  terminalLines.forEach(({ text, type }) => {
+    const line = document.createElement("p");
+    line.className = `terminal-line ${type}`;
+    line.textContent = text;
+    output.appendChild(line);
+  });
+  $("#terminal-current-path").textContent = terminalPromptPath();
+  $("#terminal-path-display").textContent = state.terminalCwd;
+  $("#terminal-finish").hidden = !state.terminalSolved;
+  output.scrollTop = output.scrollHeight;
+}
+
+function completeTerminalPuzzle() {
+  if (state.terminalSolved) return;
+  state.terminalSolved = true;
+  state.chapterComplete = false;
+  state.zombieDistance = Math.max(state.zombieDistance, 92);
+  addItem("terminal-note");
+  setActivity("숨김 파일에서 다음 장소를 찾았다: 2층 독서실 B-17 책장.");
+  saveState();
+  render();
+}
+
+function runTerminalCommand(rawCommand) {
+  const raw = rawCommand.trim();
+  if (!raw) return;
+  addTerminalLine(`pc@cnu:${terminalPromptPath()}$ ${raw}`, "command");
+  const [command, ...args] = raw.split(/\s+/);
+
+  if (command === "clear") {
+    terminalLines = [];
+    return;
+  }
+
+  if (command === "help") {
+    addTerminalLine("ls [경로]  목록 보기 · ls -a  숨김 파일 포함");
+    addTerminalLine("cd [폴더]  이동 · cd ..  이전 폴더 · cat [파일]  파일 읽기 · pwd  현재 경로");
+    return;
+  }
+
+  if (command === "pwd") {
+    addTerminalLine(state.terminalCwd);
+    return;
+  }
+
+  if (command === "ls") {
+    const showHidden = args.some((arg) => arg.startsWith("-") && arg.includes("a"));
+    const pathArg = args.find((arg) => !arg.startsWith("-"));
+    const targetPath = resolveTerminalPath(pathArg || "");
+    const directory = virtualFileSystem[targetPath];
+    if (!directory) {
+      addTerminalLine(`ls: '${pathArg || targetPath}'에 접근할 수 없습니다.`, "error");
+      return;
+    }
+    const directories = directory.directories.map((name) => `${name}/`);
+    const files = Object.keys(directory.files).filter((name) => showHidden || !name.startsWith("."));
+    addTerminalLine([...directories, ...files].join("    ") || "(비어 있음)", "listing");
+    return;
+  }
+
+  if (command === "cd") {
+    const targetPath = resolveTerminalPath(args[0] || "~");
+    if (!virtualFileSystem[targetPath]) {
+      addTerminalLine(`cd: '${args[0] || ""}' 폴더를 찾을 수 없습니다.`, "error");
+      return;
+    }
+    state.terminalCwd = targetPath;
+    saveState();
+    return;
+  }
+
+  if (command === "cat") {
+    if (!args[0]) {
+      addTerminalLine("cat: 읽을 파일 이름이 필요합니다.", "error");
+      return;
+    }
+    const requestedPath = resolveTerminalPath(args[0]);
+    const pathParts = requestedPath.split("/");
+    const fileName = pathParts.pop();
+    const directoryPath = pathParts.join("/") || "/";
+    const file = virtualFileSystem[directoryPath]?.files[fileName];
+    if (file === undefined) {
+      addTerminalLine(`cat: '${args[0]}' 파일을 찾을 수 없습니다.`, "error");
+      return;
+    }
+    file.split("\n").forEach((line) => addTerminalLine(line, fileName === ".next_location" ? "success" : "output"));
+    if (requestedPath === "/home/pc/Documents/research/2026/.next_location") completeTerminalPuzzle();
+    return;
+  }
+
+  addTerminalLine(`${command}: 명령을 찾을 수 없습니다. 'help'를 입력해 보세요.`, "error");
+}
+
+function openComputerTerminal() {
+  terminalLines = [
+    { text: "CNU BIOSYSTEM TERMINAL · RECOVERY MODE", type: "system" },
+    { text: `현재 컴퓨터의 경로는 ${state.terminalCwd}이다.`, type: "output" },
+    { text: "컴퓨터 저장소 어딘가에 다음 장소로 향하는 힌트가 있다 한다. 잘 찾아보자.", type: "output" },
+    { text: "목록을 확인하려면 ls를 입력하라. 사용 가능한 명령은 help에서 확인할 수 있다.", type: "hint" },
+  ];
+  if (state.terminalSolved) {
+    terminalLines.push({ text: "복구 완료: 다음 장소는 2층 독서실 B-17 책장이다.", type: "success" });
+  }
+  showModal(modalFrame({
+    code: "PC-07 · LOCAL STORAGE",
+    title: "켜진 컴퓨터",
+    body: `
+      <div class="terminal-screen">
+        <div class="terminal-status"><span>LOCAL SHELL</span><span id="terminal-path-display">${state.terminalCwd}</span></div>
+        <div class="terminal-output" id="terminal-output" aria-live="polite"></div>
+        <form class="terminal-form" id="terminal-form" autocomplete="off">
+          <label class="terminal-prompt" for="terminal-command">pc@cnu:<span id="terminal-current-path">${terminalPromptPath()}</span>$</label>
+          <input id="terminal-command" name="command" type="text" inputmode="text" autocapitalize="none" autocomplete="off" spellcheck="false" aria-label="터미널 명령어" placeholder="ls" />
+          <button type="submit">실행</button>
+        </form>
+      </div>
+      <div class="terminal-guide"><span>첫 명령어</span><code>ls</code><span>막히면</span><code>help</code></div>
+      <button class="primary-button letter-action" id="terminal-finish" type="button" hidden>위치 단서를 챙긴다 <span>→</span></button>`,
+  }));
+  $("#modal").classList.add("terminal-modal");
+  renderTerminalOutput();
+  $("#terminal-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#terminal-command");
+    runTerminalCommand(input.value);
+    input.value = "";
+    renderTerminalOutput();
+    input.focus();
+  });
+  $("#terminal-finish").addEventListener("click", closeModal);
+  $("#terminal-command").focus();
+}
+
+function goToReadingRoomEntrance() {
+  if (!state.terminalSolved) return;
+  closeModal();
+  if (state.scene === "readingRoom") {
+    setActivity("자료열람실 출입문 앞으로 돌아왔다.");
+  } else {
+    setActivity("터미널에서 찾은 단서를 따라 2층 212호 자료열람실 앞에 도착했다.");
+    state.zombieDistance = Math.max(64, state.zombieDistance - 12);
+  }
+  saveState();
+  transitionTo("readingRoomEntrance");
+}
+
+function enterReadingRoom() {
+  state.readingRoomReached = true;
+  setActivity("자료열람실 안으로 들어왔다. 단서가 가리킨 B-17 책장을 찾아야 한다.");
+  saveState();
+  transitionTo("readingRoom");
+}
+
+function inspectB17Shelf() {
+  state.b17Inspected = true;
+  setActivity("B-17 책장에서 봉인된 바이러스 구조 분석 기록을 발견했다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: "FOUND OBJECT · B-17",
+    title: "봉인된 분석 기록",
+    body: `
+      <div class="result-mark">B-17</div>
+      <p class="result-copy">책 사이에 붉은 봉인 테이프로 감긴 연구 기록이 숨겨져 있다.<br />바이러스 구조를 분석해야 다음 단서를 확인할 수 있다.</p>
+      <div class="status-grid"><div><small>현재 위치</small><strong>2층 자료열람실</strong></div><div><small>발견 지점</small><strong>B-17</strong></div><div><small>다음 문제</small><strong>바이러스 구조</strong></div></div>
+      <button class="primary-button letter-action" type="button" data-close-b17>기록을 확보한다</button>`,
+  }));
+  $("[data-close-b17]").addEventListener("click", closeModal);
 }
 
 function escapeWrongRoom() {
@@ -358,6 +652,14 @@ function inspectItem(id) {
     inspectLetter(true);
     return;
   }
+  if (id === "terminal-note") {
+    showModal(modalFrame({
+      code: "RECOVERED FILE · NEXT LOCATION",
+      title: "위치 단서",
+      body: `<div class="result-mark">⌘</div><p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />B-17 책장에 바이러스 구조 분석 기록이 숨겨져 있다.</p>`,
+    }));
+    return;
+  }
   showModal(modalFrame({
     code: "ITEM · PORTABLE LIGHT",
     title: "휴대용 형광등",
@@ -368,16 +670,19 @@ function inspectItem(id) {
 function openMiniMap() {
   const lobbyCurrent = state.scene === "lobby";
   const hallCurrent = state.scene === "hallway";
+  const labCurrent = state.scene === "computerLab";
+  const readingRoomCurrent = state.scene === "readingRoomEntrance" || state.scene === "readingRoom";
   showModal(modalFrame({
     code: "ITEM · CAMPUS MINIMAP",
     title: "좀비 위치 탐지",
     body: `
       <div class="map-area">
         <div class="map-path" aria-hidden="true"></div>
-        <div class="map-node node-101${state.chapterComplete ? " current" : ""}">101호</div>
+        <div class="map-node node-101${labCurrent ? " current" : ""}">101호<br />컴퓨터실</div>
         <div class="map-node node-105">105호</div>
         <div class="map-node node-hallway${hallCurrent ? " current" : ""}">1층 복도</div>
         <div class="map-node node-lobby${lobbyCurrent ? " current" : ""}">로비</div>
+        <div class="map-node node-reading-room${readingRoomCurrent ? " current" : ""}">2층<br />자료열람실</div>
         <div class="zombie-signal"><strong>${state.zombieDistance}m</strong><small>좀비 무리</small></div>
       </div>
       <div class="status-grid"><div><small>현재 위치</small><strong>${scenes[state.scene].hud}</strong></div><div><small>최근접 좀비</small><strong>${state.zombieDistance}m</strong></div><div><small>물림</small><strong>${state.bites} / 3</strong></div></div>`,
@@ -455,6 +760,11 @@ function handleSceneAction(action) {
   if (action === "go-lobby") transitionTo("lobby");
   if (action === "choose-101") chooseRoom("101");
   if (action === "choose-105") chooseRoom("105");
+  if (action === "use-computer") openComputerTerminal();
+  if (action === "go-computer-lab") transitionTo("computerLab");
+  if (action === "go-reading-room-entrance") goToReadingRoomEntrance();
+  if (action === "enter-reading-room") enterReadingRoom();
+  if (action === "inspect-b17") inspectB17Shelf();
 }
 
 $("#new-game-button").addEventListener("click", () => startGame(true));

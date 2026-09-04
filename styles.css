@@ -84,7 +84,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 .room-hotspot .pulse { border-color: #e5e8e3; box-shadow: 0 0 0 9px rgb(255 255 255 / 0.06), 0 0 30px rgb(255 255 255 / 0.25); }
 .room-hotspot .pulse::after { content: "→"; color: white; }
 .room-hotspot .hotspot-label { font: 850 1.2rem ui-monospace, monospace; }
+.computer-hotspot { left: 66%; top: 55%; width: 7rem; height: 7rem; transform: translate(-50%, -50%); }
+.computer-hotspot .pulse { border-color: var(--cyan); background: rgb(122 196 193 / 0.1); box-shadow: 0 0 0 10px rgb(122 196 193 / 0.08), 0 0 42px rgb(122 196 193 / 0.65); }
+.computer-hotspot .pulse::after { content: ">_"; color: #b7ffff; font-size: 1.15rem; }
+.computer-hotspot .hotspot-label { border-color: rgb(122 196 193 / 0.7); color: #c9ffff; }
+.reading-room-door-hotspot { left: 31%; top: 58%; width: 8.5rem; height: 8.5rem; transform: translate(-50%, -50%); }
+.reading-room-door-hotspot .pulse::after { content: "→"; }
+.shelf-hotspot { left: 70%; top: 51%; width: 7rem; height: 7rem; transform: translate(-50%, -50%); }
+.shelf-hotspot .pulse { border-color: var(--amber); background: rgb(233 182 91 / 0.08); box-shadow: 0 0 0 9px rgb(233 182 91 / 0.08), 0 0 35px rgb(233 182 91 / 0.42); }
+.shelf-hotspot .pulse::after { content: "B-17"; color: var(--amber); font-size: 0.92rem; }
+.shelf-hotspot .hotspot-label { border-color: rgb(233 182 91 / 0.55); color: #f5cf8c; }
 .scene-back { position: absolute; right: 1rem; bottom: 1rem; padding: 0.7rem 0.9rem; border: 1px solid rgb(255 255 255 / 0.3); background: rgb(4 7 7 / 0.8); cursor: pointer; backdrop-filter: blur(8px); }
+.lab-back { top: 1rem; bottom: auto; }
+.scene-next { position: absolute; right: 1rem; bottom: 1rem; min-height: 2.8rem; padding: 0.68rem 0.9rem; border: 1px solid rgb(185 255 56 / 0.62); background: rgb(13 25 9 / 0.88); color: var(--acid); font-weight: 800; cursor: pointer; backdrop-filter: blur(8px); box-shadow: 0 0 20px rgb(185 255 56 / 0.12); }
+.scene-next:hover { border-color: var(--acid); background: rgb(31 52 18 / 0.94); }
 .urgent { color: var(--red) !important; }
 @keyframes searchPulse { 0%, 100% { box-shadow: 0 0 0 5px rgb(200 244 61 / 0.1), 0 0 18px rgb(200 244 61 / 0.35); } 50% { box-shadow: 0 0 0 12px transparent, 0 0 34px rgb(200 244 61 / 0.65); } }
 
@@ -142,6 +155,29 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 .status-grid small { display: block; color: var(--muted); font-size: 0.67rem; }
 .status-grid strong { display: block; margin-top: 0.3rem; color: var(--acid); font: 750 0.9rem ui-monospace, monospace; }
 
+.terminal-modal { width: min(62rem, calc(100% - 2rem)); border-color: #315d59; }
+.terminal-modal .modal-panel { max-height: calc(100vh - 2rem); overflow-y: auto; }
+.terminal-modal .modal-header { border-top-color: var(--cyan); border-bottom-color: #274744; background: linear-gradient(90deg, rgb(49 126 120 / 0.18), transparent 60%); }
+.terminal-screen { overflow: hidden; border: 1px solid #31564b; border-radius: 0.2rem; background: #010604; color: #bad5c6; box-shadow: inset 0 0 45px rgb(44 151 103 / 0.08), 0 12px 35px rgb(0 0 0 / 0.38); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.terminal-status { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 0.75rem; border-bottom: 1px solid #244137; background: #08120e; color: var(--cyan); font-size: 0.72rem; letter-spacing: 0.08em; }
+.terminal-status span:last-child { overflow: hidden; color: #719589; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-output { min-height: 19rem; max-height: 46vh; overflow-y: auto; padding: 1rem; scrollbar-color: #315d50 #050b08; }
+.terminal-line { margin: 0 0 0.55rem; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.88rem; line-height: 1.55; }
+.terminal-line.command { color: #f0fff7; }
+.terminal-line.system { color: var(--cyan); font-weight: 800; letter-spacing: 0.06em; }
+.terminal-line.hint { color: var(--amber); }
+.terminal-line.listing { color: #8fdac9; }
+.terminal-line.error { color: #ff7770; }
+.terminal-line.success { color: var(--acid); font-weight: 800; }
+.terminal-form { display: flex; align-items: stretch; border-top: 1px solid #31564b; background: #020907; }
+.terminal-prompt { display: flex; align-items: center; flex: 0 0 auto; padding-left: 0.85rem; color: var(--acid); font: 750 0.88rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.terminal-form input { min-width: 0; flex: 1 1 auto; padding: 0.85rem 0.55rem; border: 0; outline: 0; background: transparent; color: #f1fff6; caret-color: var(--acid); font: 0.95rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.terminal-form input::placeholder { color: #3b594c; }
+.terminal-form button { min-width: 4.2rem; border: 0; border-left: 1px solid #31564b; background: #10231a; color: var(--acid); font-weight: 800; cursor: pointer; }
+.terminal-form button:hover { background: #173426; }
+.terminal-guide { display: flex; align-items: center; justify-content: center; gap: 0.55rem; flex-wrap: wrap; padding: 0.85rem 0 0; color: var(--muted); font-size: 0.76rem; }
+.terminal-guide code { padding: 0.24rem 0.42rem; border: 1px solid #3b5a4e; background: #07100c; color: var(--acid); font-family: ui-monospace, monospace; }
+
 .minimap { background: #0b1011; }
 .map-area { position: relative; min-height: 22rem; padding: 1.5rem; background-image: linear-gradient(rgb(122 196 193 / 0.07) 1px, transparent 1px), linear-gradient(90deg, rgb(122 196 193 / 0.07) 1px, transparent 1px); background-size: 28px 28px; }
 .map-path { position: absolute; left: 50%; top: 18%; width: 1px; height: 56%; background: var(--line); }
@@ -152,6 +188,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 .node-101 { left: 18%; top: 12%; }
 .node-105 { right: 18%; top: 12%; }
 .node-hallway { left: calc(50% - 2.65rem); top: 6%; }
+.node-reading-room { right: 4%; bottom: 20%; }
 .zombie-signal { position: absolute; left: calc(50% - 2.4rem); top: 48%; display: grid; place-items: center; width: 4.8rem; height: 4.8rem; border: 1px solid var(--red); border-radius: 50%; background: rgb(240 68 68 / 0.11); color: var(--red); animation: dangerPulse 1.2s ease infinite; }
 .zombie-signal strong { font: 800 0.95rem ui-monospace, monospace; }
 .zombie-signal small { font-size: 0.62rem; }
@@ -227,6 +264,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .hotspot-label { font-size: 0.72rem; }
   .room-hotspot { width: 3.25rem; height: 3.25rem; }
   .room-hotspot .hotspot-label { font-size: 0.92rem; }
+  .computer-hotspot { left: 68%; top: 55%; width: 4.25rem; height: 4.25rem; }
+  .reading-room-door-hotspot { left: 29%; top: 58%; width: 4.5rem; height: 4.5rem; }
+  .shelf-hotspot { left: 72%; top: 51%; width: 4.5rem; height: 4.5rem; }
+  .shelf-hotspot .pulse::after { font-size: 0.72rem; }
+  .lab-back { top: 0.45rem; bottom: auto; }
+  .scene-next { right: 0.45rem; bottom: 0.45rem; min-height: 2.35rem; max-width: 9.5rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; }
   .inventory-title { padding: 0.5rem 0.65rem; border-top-width: 2px; }
   .inventory-title span { font-size: 0.68rem; }
   .inventory-items { grid-template-columns: repeat(4, minmax(4.25rem, 1fr)); gap: 0.38rem; padding: 0.48rem; }
@@ -238,6 +281,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .log-button > span { width: 1.55rem; height: 1.55rem; }
   .log-button small { display: none; }
   .log-button strong { display: -webkit-box; overflow: hidden; font-size: 0.72rem; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+  .terminal-modal { width: calc(100% - 0.75rem); max-height: calc(100dvh - 0.75rem); }
+  .terminal-modal .modal-panel { max-height: calc(100dvh - 0.75rem); }
+  .terminal-modal .modal-header { padding: 0.8rem; }
+  .terminal-modal .modal-header h2 { font-size: 1.35rem; }
+  .terminal-modal .modal-body { padding: 0.65rem; }
+  .terminal-output { min-height: 13rem; max-height: 39dvh; padding: 0.75rem; }
+  .terminal-line { font-size: 0.79rem; }
+  .terminal-prompt { max-width: 44%; overflow: hidden; padding-left: 0.55rem; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+  .terminal-form input { padding: 0.75rem 0.4rem; font-size: 0.85rem; }
+  .terminal-form button { min-width: 3.5rem; }
   .jumpscare > img { object-fit: contain; object-position: center; }
   .choice-summary, .status-grid { grid-template-columns: 1fr; }
   .map-node { width: 4.5rem; height: 4.5rem; }
