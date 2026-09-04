@@ -222,6 +222,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 
 @media (max-width: 560px) {
   body::before { opacity: 0.12; }
+  body.game-active { height: 100vh; height: 100dvh; overflow: hidden; }
   .title-screen { min-height: 100dvh; align-items: end; padding: 1rem max(1rem, env(safe-area-inset-right)) calc(4.4rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
   .title-backdrop { inset: 0 auto auto 0; height: auto; aspect-ratio: 1672 / 941; object-fit: contain; object-position: center top; background: #030505; }
   .title-shade { background: linear-gradient(0deg, rgb(2 4 5 / 0.98) 0%, rgb(2 4 5 / 0.72) 57%, rgb(2 4 5 / 0.1) 100%); }
@@ -234,8 +235,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .title-actions .primary-button, .title-actions .ghost-button { width: 100%; min-height: 3.25rem; justify-content: space-between; }
   .title-meta { margin-top: 0.75rem; }
   .danger-tape { right: -7rem; bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
-  .game { min-height: 100dvh; }
-  .hud { position: sticky; top: 0; z-index: 40; min-height: 0; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 2.75rem auto; gap: 0.3rem 0.45rem; padding: max(0.32rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) 0.42rem max(0.5rem, env(safe-area-inset-left)); }
+  .game { width: 100%; height: 100vh; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .hud { position: relative; z-index: 40; min-height: 0; flex: 0 0 auto; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 2.75rem auto; gap: 0.3rem 0.45rem; padding: max(0.32rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) 0.42rem max(0.5rem, env(safe-area-inset-left)); }
   .hud-brand { gap: 0.35rem; }
   .hud-brand .hazard-mark { width: 2.25rem; height: 2.25rem; font-size: 1.05rem; }
   .hud-brand strong { font-size: 0.82rem; }
@@ -252,8 +253,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   #bite-pips { gap: 0.2rem; }
   #bite-pips i { width: 0.55rem; height: 0.55rem; }
   .hud-button { width: 2.4rem; height: 2.4rem; min-width: 2.4rem; }
-  .scene { aspect-ratio: 16 / 10; }
-  .scene > img { object-fit: cover; }
+  .scene-shell { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
+  .scene { width: 100%; height: auto; min-height: 0; flex: 1 1 auto; aspect-ratio: auto; }
+  .scene > img { object-fit: cover; object-position: center; }
   .hotspot { width: 3.25rem; height: 3.25rem; }
   .paper-hotspot { left: 55%; top: 86%; transform: translate(-50%, -50%); }
   .paper-hotspot .hotspot-label { top: auto; bottom: calc(100% + 0.35rem); }
@@ -275,7 +277,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
   .shelf-hotspot { left: 72%; top: 51%; width: 4.5rem; height: 4.5rem; }
   .shelf-hotspot .pulse::after { font-size: 0.72rem; }
   .lab-back { top: 0.45rem; bottom: auto; }
-  .inventory-bar { border-top-color: #445044; padding-bottom: env(safe-area-inset-bottom); }
+  .inventory-bar { max-height: 44dvh; flex: 0 0 auto; overflow-y: auto; border-top-color: #445044; padding-bottom: env(safe-area-inset-bottom); overscroll-behavior: contain; }
   .inventory-title { min-height: 2.9rem; align-items: center; padding: 0.55rem 0.75rem; border-top-width: 2px; cursor: pointer; }
   .inventory-title span { font-size: 0.75rem; }
   .inventory-summary i { display: inline; font-size: 1rem; }
@@ -341,7 +343,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--acid); outl
 @media (max-width: 700px) and (orientation: landscape) {
   .title-screen { min-height: 34rem; }
   .hud { position: relative; }
-  .scene { aspect-ratio: 1672 / 941; }
+  .scene { aspect-ratio: auto; }
   .modal, .modal-panel, .terminal-modal, .terminal-modal .modal-panel { max-height: calc(100dvh - 0.25rem); }
   .terminal-output { max-height: 28dvh; }
 }

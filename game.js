@@ -326,6 +326,7 @@ function startGame(reset = false) {
   }
   state.started = true;
   state.paused = false;
+  document.body.classList.add("game-active");
   $("#title-screen").hidden = true;
   $("#game").hidden = false;
   $("#pause-overlay").hidden = true;
