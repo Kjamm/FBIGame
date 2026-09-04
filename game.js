@@ -2,6 +2,8 @@ const $ = (selector) => document.querySelector(selector);
 
 const STORAGE_KEY = "cnu-biozombie-chapter-01";
 const LIMIT_SECONDS = 60 * 60;
+const MICROSCOPE_COARSE_TARGET = 5;
+const MICROSCOPE_FINE_TARGET = 2;
 
 const initialState = {
   started: false,
@@ -24,6 +26,12 @@ const initialState = {
   shelfIlluminated: false,
   shelfNoteFound: false,
   shelfPuzzleSolved: false,
+  infectedRatsInspected: false,
+  microscopeInspected: false,
+  microscopeObjective: 4,
+  microscopeCoarseFocus: 2,
+  microscopeFineFocus: 0,
+  microscopeSolved: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
@@ -91,6 +99,13 @@ const scenes = {
     name: "2층 자료열람실",
     hud: "2F · 자료열람실",
   },
+  animalResearchCenter: {
+    image: "assets/images/cnu-animal-research-center.jpg",
+    alt: "손상된 케이지 주변을 바이러스에 감염된 실험쥐들이 돌아다니는 어두운 동물실험 연구센터",
+    number: "06",
+    name: "동물실험 연구센터",
+    hud: "2F · 동물실험 연구센터",
+  },
 };
 
 const virtualFileSystem = {
@@ -126,7 +141,7 @@ const virtualFileSystem = {
     directories: ["samples"],
     files: {
       "README.txt": "중요 기록은 숨김 파일로 전환했다. 숨김 항목까지 확인하려면 ls -a 를 입력하라.",
-      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17\n그곳에 바이러스 구조 분석 기록을 숨겨두었다.",
+      ".next_location": "NEXT_LOCATION = 2층 독서실\nSHELF = B-17",
     },
   },
   "/home/pc/Documents/research/2026/samples": {
@@ -185,6 +200,7 @@ function loadState() {
     }
     delete state.chapterComplete;
     delete state.readingRoomReached;
+    delete state.microscopeFocus;
     $("#continue-button").hidden = !state.started || state.failed;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
@@ -347,24 +363,6 @@ function startGame(reset = false) {
   startBgm();
 }
 
-function objectiveText() {
-  if (state.scene === "readingRoom") {
-    if (state.shelfPuzzleSolved) return "획득한 바리케이드를 확인하라";
-    if (state.shelfNoteFound) return "책 사이에서 찾은 숫자 문제를 풀어라";
-    if (state.shelfIlluminated) return "밝아진 B-17 책장에서 종이를 조사하라";
-    if (state.b17Inspected && state.fluorescentOn) return "형광등을 들고 B-17 책장을 다시 보라";
-    if (state.b17Inspected) return "인벤토리에서 형광등을 켜라";
-    return "B-17 책장을 조사하라";
-  }
-  if (state.scene === "readingRoomEntrance") return "자료열람실 문을 열고 안으로 들어가라";
-  if (state.terminalSolved && state.scene === "lobby") return "로비에서 2층 자료열람실로 이동하라";
-  if (state.terminalSolved) return "로비로 돌아가 2층으로 이동하라";
-  if (state.scene === "computerLab") return "불이 켜진 컴퓨터를 조사하라";
-  if (state.scene === "hallway") return "편지가 가리킨 호실을 선택하라";
-  if (state.letterRead) return "1층 복도로 이동하라";
-  return "바닥에 떨어진 종이를 조사하라";
-}
-
 function setActivity(message) {
   state.activity = message;
   $("#activity").textContent = message;
@@ -455,6 +453,12 @@ function renderHotspots() {
         <span class="pulse" aria-hidden="true"></span>
         <span class="hotspot-label">자료열람실 문</span>
       </button>
+      ${state.shelfPuzzleSolved ? `
+        <button class="hotspot lab-entrance-hotspot" data-action="inspect-lab-entrance" type="button">
+          <span class="lab-glimmer" aria-hidden="true"></span>
+          <span class="pulse" aria-hidden="true"></span>
+          <span class="hotspot-label">동물실험 연구센터</span>
+        </button>` : ""}
       <button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   } else if (state.scene === "readingRoom") {
     container.innerHTML = `
@@ -463,6 +467,17 @@ function renderHotspots() {
         <span class="hotspot-label">${state.shelfPuzzleSolved ? "B-17 확보 완료" : state.fluorescentOn ? "B-17 다시 보기" : "B-17 책장"}</span>
       </button>
       <button class="scene-back" data-action="go-reading-room-entrance" type="button">← 출입문</button>`;
+  } else if (state.scene === "animalResearchCenter") {
+    container.innerHTML = `
+      <button class="hotspot microscope-hotspot${state.microscopeSolved ? " solved" : ""}" data-action="inspect-microscope" type="button">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="hotspot-label">${state.microscopeSolved ? "열린 현미경 서랍" : "현미경"}</span>
+      </button>
+      <button class="hotspot infected-rats-hotspot" data-action="inspect-infected-rats" type="button">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="hotspot-label">감염된 실험쥐</span>
+      </button>
+      <button class="scene-back" data-action="go-reading-room-entrance" type="button">← 2층 복도</button>`;
   } else {
     container.innerHTML = `<button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   }
@@ -482,7 +497,6 @@ function renderScene() {
 function render() {
   $("#timer").textContent = formatTime(state.elapsed);
   $("#timer").classList.toggle("urgent", LIMIT_SECONDS - state.elapsed <= 10 * 60);
-  $("#objective").textContent = objectiveText();
   $("#activity").textContent = state.activity;
   $("#bite-pips").querySelectorAll("i").forEach((pip, index) => pip.classList.toggle("active", index < state.bites));
   updateSoundButton();
@@ -521,7 +535,7 @@ function showModal(html) {
 
 function closeModal() {
   if ($("#modal").open) $("#modal").close();
-  $("#modal").classList.remove("terminal-modal", "evidence-modal");
+  $("#modal").classList.remove("terminal-modal", "evidence-modal", "microscope-modal");
 }
 
 function inspectLetter(fromInventory = false) {
@@ -774,13 +788,173 @@ function goToReadingRoomEntrance() {
   if (!state.terminalSolved) return;
   closeModal();
   if (state.scene === "readingRoom") {
-    setActivity("자료열람실 출입문 앞으로 돌아왔다.");
+    setActivity(state.shelfPuzzleSolved
+      ? "자료열람실 밖으로 나오자 왼쪽 실험실 입구가 열려 있다. 안쪽에서 빛이 희미하게 반짝인다."
+      : "자료열람실 출입문 앞으로 돌아왔다.");
+  } else if (state.scene === "animalResearchCenter") {
+    setActivity("동물실험 연구센터에서 빠져나와 2층 복도로 돌아왔다. 감염된 실험쥐들의 울음소리가 문 너머로 들린다.");
   } else {
     setActivity("터미널에서 찾은 단서를 따라 2층 212호 자료열람실 앞에 도착했다.");
     state.zombieDistance = Math.max(64, state.zombieDistance - 12);
   }
   saveState();
   transitionTo("readingRoomEntrance");
+}
+
+function inspectLabEntrance() {
+  if (!state.shelfPuzzleSolved) return;
+  closeModal();
+  setActivity("반짝이는 빛을 따라 동물실험 연구센터 안으로 들어왔다. 손상된 케이지 주변에 감염된 실험쥐들이 모여 있다.");
+  saveState();
+  transitionTo("animalResearchCenter");
+}
+
+function inspectInfectedRats() {
+  state.infectedRatsInspected = true;
+  setActivity("바이러스에 감염된 실험쥐들이 깨진 케이지 주변에서 공격적으로 움직인다.");
+  saveState();
+  render();
+  showModal(modalFrame({
+    code: "BIOHAZARD · INFECTED SUBJECTS",
+    title: "감염된 실험쥐",
+    body: `
+      <div class="result-mark danger-mark" aria-hidden="true">☣</div>
+      <p class="result-copy">케이지의 안전 잠금이 부서져 있다.<br />탁하게 변한 눈과 공격적인 행동으로 보아 실험쥐들도 바이러스에 감염된 듯하다. 가까이 가지 않는 편이 좋겠다.</p>`,
+  }));
+}
+
+function microscopeFocusState() {
+  const objective = Number(state.microscopeObjective);
+  const fineTarget = objective === 40 ? MICROSCOPE_FINE_TARGET : objective === 10 ? 1 : 0;
+  const coarseError = Math.abs(state.microscopeCoarseFocus - MICROSCOPE_COARSE_TARGET);
+  const fineError = Math.abs(state.microscopeFineFocus - fineTarget);
+  const error = coarseError * 1.8 + fineError * 0.65;
+  const powerFactor = objective === 40 ? 1.55 : objective === 10 ? 1.05 : 0.72;
+  const scale = objective === 40 ? 2.7 : objective === 10 ? 1.65 : 1.05;
+  const blur = state.microscopeSolved ? 0 : Math.min(12, error * powerFactor);
+
+  if (objective === 40 && coarseError === 0 && fineError === 0) {
+    return { blur: 0, scale, label: "세포막과 핵의 경계가 정확히 겹쳐 보인다.", ready: true };
+  }
+  if (coarseError >= 2) return { blur, scale, label: "상이 크게 흐트러져 있다. 조동 나사로 표본 높이를 맞춰야 한다.", ready: false };
+  if (fineError > 0) return { blur, scale, label: "형태는 보이지만 경계가 겹쳐 보인다. 미동 나사를 조절해야 한다.", ready: false };
+  if (objective === 4) return { blur, scale, label: "표본 전체가 보인다. 관찰할 부위를 찾았다면 배율을 높여 보자.", ready: false };
+  if (objective === 10) return { blur, scale, label: "세포 무리가 보이지만 감염 흔적을 확인하기에는 배율이 부족하다.", ready: false };
+  return { blur, scale, label: "렌즈 상태를 다시 확인하자.", ready: false };
+}
+
+function microscopePuzzleBody() {
+  const focus = microscopeFocusState();
+  const objective = Number(state.microscopeObjective);
+  const totalMagnification = objective * 10;
+  return `
+    <p class="microscope-intro">누가 연구하다 만 바이러스 감염 쥐의 흔적이다. 살펴보자.</p>
+    <div class="microscope-stage${state.microscopeSolved ? " focused" : ""}">
+      <div class="scope-viewport">
+        <img id="microscope-specimen" src="assets/images/infected-rat-tissue.jpg" alt="현미경으로 관찰한 바이러스 감염 쥐의 조직" style="--focus-blur: ${focus.blur}px; --focus-scale: ${focus.scale};" />
+        <span class="scope-reticle" aria-hidden="true"></span>
+        <span class="scope-scanlines" aria-hidden="true"></span>
+        <strong class="scope-magnification">${totalMagnification}×</strong>
+      </div>
+      ${state.microscopeSolved ? `
+        <div class="focus-readout success"><span>●</span> 400× · 초점 고정 완료</div>
+        <div class="microscope-drawer open" aria-live="polite">
+          <div class="drawer-cavity"><strong>서랍이 열렸다</strong><small>현미경 아래에서 잠금장치가 풀리는 소리가 났다.</small></div>
+          <div class="drawer-front"><span></span></div>
+        </div>` : `
+        <div class="focus-console">
+          <div class="magnification-formula" aria-live="polite">
+            <span><small>접안렌즈</small><b>10×</b></span><i>×</i>
+            <span><small>대물렌즈</small><b>${objective}×</b></span><i>=</i>
+            <strong><small>총배율</small>${totalMagnification}×</strong>
+          </div>
+          <p class="microscope-guide">낮은 배율에서 표본을 찾고, 대물렌즈를 돌려 배율을 높인 뒤 조동·미동 나사로 초점을 맞추자.</p>
+          <div class="objective-turret" role="group" aria-label="대물렌즈 선택">
+            ${[4, 10, 40].map((power) => `
+              <button class="objective-lens${objective === power ? " active" : ""}" type="button" data-objective="${power}" aria-pressed="${objective === power}">
+                <span aria-hidden="true"></span><b>${power}×</b><small>${power === 4 ? "탐색" : power === 10 ? "관찰" : "확대"}</small>
+              </button>`).join("")}
+          </div>
+          <div class="focus-knob-grid">
+            <section class="focus-knob-control">
+              <div class="focus-knob coarse" style="--knob-turn: ${state.microscopeCoarseFocus * 38}deg" aria-hidden="true"><span></span></div>
+              <div><strong>조동 나사</strong><small>표본 높이를 크게 조절</small></div>
+              <div class="knob-buttons">
+                <button type="button" data-focus-control="coarse" data-focus-direction="-1" aria-label="조동 나사를 반시계 방향으로 돌리기">−</button>
+                <button type="button" data-focus-control="coarse" data-focus-direction="1" aria-label="조동 나사를 시계 방향으로 돌리기">+</button>
+              </div>
+            </section>
+            <section class="focus-knob-control">
+              <div class="focus-knob fine" style="--knob-turn: ${(state.microscopeFineFocus + 4) * 42}deg" aria-hidden="true"><span></span></div>
+              <div><strong>미동 나사</strong><small>초점을 미세하게 조절</small></div>
+              <div class="knob-buttons">
+                <button type="button" data-focus-control="fine" data-focus-direction="-1" aria-label="미동 나사를 반시계 방향으로 돌리기">−</button>
+                <button type="button" data-focus-control="fine" data-focus-direction="1" aria-label="미동 나사를 시계 방향으로 돌리기">+</button>
+              </div>
+            </section>
+          </div>
+          <div class="focus-readout${focus.ready ? " near" : ""}" id="focus-readout" aria-live="polite">${focus.label}</div>
+        </div>`}
+    </div>`;
+}
+
+function completeMicroscopeFocus() {
+  state.microscopeSolved = true;
+  setActivity("40배 대물렌즈에서 조동·미동 나사를 정확히 맞추자 잠금장치가 풀리며 아래쪽 서랍이 열렸다.");
+  saveState();
+  render();
+  openMicroscopePuzzle();
+}
+
+function refreshMicroscopeControls() {
+  const focus = microscopeFocusState();
+  saveState();
+  if (focus.ready) {
+    completeMicroscopeFocus();
+    return;
+  }
+  openMicroscopePuzzle();
+}
+
+function setMicroscopeObjective(power) {
+  state.microscopeObjective = Number(power);
+  refreshMicroscopeControls();
+}
+
+function adjustMicroscopeFocus(control, direction) {
+  if (control === "coarse") {
+    state.microscopeCoarseFocus = Math.max(0, Math.min(8, state.microscopeCoarseFocus + direction));
+  } else {
+    state.microscopeFineFocus = Math.max(-4, Math.min(4, state.microscopeFineFocus + direction));
+  }
+  refreshMicroscopeControls();
+}
+
+function openMicroscopePuzzle() {
+  showModal(modalFrame({
+    code: state.microscopeSolved ? "MICROSCOPE · FOCUS LOCKED" : "MICROSCOPE · SAMPLE 01",
+    title: state.microscopeSolved ? "정확한 초점" : "중단된 현미경 관찰",
+    body: microscopePuzzleBody(),
+  }));
+  $("#modal").classList.add("microscope-modal");
+
+  if (state.microscopeSolved) return;
+  document.querySelectorAll("[data-objective]").forEach((button) => {
+    button.addEventListener("click", () => setMicroscopeObjective(button.dataset.objective));
+  });
+  document.querySelectorAll("[data-focus-control]").forEach((button) => {
+    button.addEventListener("click", () => adjustMicroscopeFocus(button.dataset.focusControl, Number(button.dataset.focusDirection)));
+  });
+}
+
+function inspectMicroscope() {
+  state.microscopeInspected = true;
+  setActivity(state.microscopeSolved
+    ? "초점이 맞춰진 현미경과 열린 아래쪽 서랍을 다시 살펴본다."
+    : "누군가 관찰하다 만 감염 쥐의 조직 표본이 현미경에 놓여 있다.");
+  saveState();
+  render();
+  openMicroscopePuzzle();
 }
 
 function enterReadingRoom() {
@@ -895,16 +1069,7 @@ function checkShelfPuzzleAnswer(event) {
 
 function escapeWrongRoom() {
   $("#jumpscare").hidden = true;
-  state.zombieDistance = Math.max(58, 74 - state.wrongDoorCount * 5);
-  setActivity("간신히 문을 닫고 복도로 돌아왔다. 105호는 함정이었다.");
-  saveState();
-  render();
-  showModal(modalFrame({
-    code: "ESCAPED · NO BITE",
-    title: "잘못된 장소",
-    body: `<p class="result-copy">105호는 좀비로 가득했다. 다행히 물리기 전에 빠져나왔다.<br />편지의 이상한 글자를 다시 살펴보자.</p><button class="primary-button letter-action" type="button" data-dismiss-result>다른 방을 선택한다</button>`,
-  }));
-  $("[data-dismiss-result]").addEventListener("click", closeModal);
+  triggerZombieAttack("wrong-room");
 }
 
 function inspectItem(id) {
@@ -923,7 +1088,7 @@ function inspectItem(id) {
     showModal(modalFrame({
       code: "RECOVERED FILE · NEXT LOCATION",
       title: "위치 단서",
-      body: `<div class="result-mark">⌘</div><p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />B-17 책장에 바이러스 구조 분석 기록이 숨겨져 있다.</p>`,
+      body: `<div class="result-mark">⌘</div><p class="result-copy"><strong>다음 장소: 2층 독서실</strong><br />확인 지점: B-17 책장</p>`,
     }));
     return;
   }
@@ -949,19 +1114,21 @@ function inspectItem(id) {
 function openMiniMap() {
   const lobbyCurrent = state.scene === "lobby";
   const hallCurrent = state.scene === "hallway";
-  const labCurrent = state.scene === "computerLab";
+  const computerLabCurrent = state.scene === "computerLab";
   const readingRoomCurrent = state.scene === "readingRoomEntrance" || state.scene === "readingRoom";
+  const animalCenterCurrent = state.scene === "animalResearchCenter";
   showModal(modalFrame({
     code: "ITEM · CAMPUS MINIMAP",
     title: "좀비 위치 탐지",
     body: `
       <div class="map-area">
         <div class="map-path" aria-hidden="true"></div>
-        <div class="map-node node-101${labCurrent ? " current" : ""}">101호<br />컴퓨터실</div>
+        <div class="map-node node-101${computerLabCurrent ? " current" : ""}">101호<br />컴퓨터실</div>
         <div class="map-node node-105">105호</div>
         <div class="map-node node-hallway${hallCurrent ? " current" : ""}">1층 복도</div>
         <div class="map-node node-lobby${lobbyCurrent ? " current" : ""}">로비</div>
         <div class="map-node node-reading-room${readingRoomCurrent ? " current" : ""}">2층<br />자료열람실</div>
+        ${state.shelfPuzzleSolved ? `<div class="map-node node-animal-center${animalCenterCurrent ? " current" : ""}">동물실험<br />연구센터</div>` : ""}
         <div class="zombie-signal"><strong>${state.zombieDistance}m</strong><small>좀비 무리</small></div>
       </div>
       <div class="status-grid"><div><small>현재 위치</small><strong>${scenes[state.scene].hud}</strong></div><div><small>최근접 좀비</small><strong>${state.zombieDistance}m</strong></div><div><small>물림</small><strong>${state.bites} / 3</strong></div></div>`,
@@ -999,11 +1166,14 @@ function showFailure() {
   });
 }
 
-function triggerZombieAttack() {
+function triggerZombieAttack(source = "distance") {
   state.bites += 1;
-  state.zombieDistance = 60;
+  state.zombieDistance = source === "wrong-room" ? Math.max(58, 74 - state.wrongDoorCount * 5) : 60;
   state.paused = true;
   suspendBgm();
+  if (source === "wrong-room") {
+    setActivity(`105호에서 탈출하는 순간 좀비에게 물렸다. 현재 물림 ${state.bites}/3.`);
+  }
   saveState();
   render();
 
@@ -1023,10 +1193,10 @@ function triggerZombieAttack() {
   }
 
   showModal(modalFrame({
-    code: `ATTACK · BITE ${state.bites}/3`,
+    code: source === "wrong-room" ? `WRONG ROOM · BITE ${state.bites}/3` : `ATTACK · BITE ${state.bites}/3`,
     title: "좀비에게 물렸다",
     close: false,
-    body: `<div class="result-mark danger-mark">${state.bites}</div><p class="result-copy">좀비 무리와의 거리가 0m가 되었다.<br />세 번 물리면 감염된다. 서둘러 이동해야 한다.</p><button class="primary-button letter-action" type="button" data-survive>계속 움직인다</button>`,
+    body: `<div class="result-mark danger-mark">${state.bites}</div><p class="result-copy">${source === "wrong-room" ? "105호에서 빠져나오던 중 팔을 물렸다." : "좀비 무리와의 거리가 0m가 되었다."}<br />세 번 물리면 감염된다. 서둘러 이동해야 한다.</p><button class="primary-button letter-action" type="button" data-survive>계속 움직인다</button>`,
   }));
   $("[data-survive]").addEventListener("click", () => {
     state.paused = false;
@@ -1046,6 +1216,9 @@ function handleSceneAction(action) {
   if (action === "go-reading-room-entrance") goToReadingRoomEntrance();
   if (action === "enter-reading-room") enterReadingRoom();
   if (action === "inspect-b17") inspectB17Shelf();
+  if (action === "inspect-lab-entrance") inspectLabEntrance();
+  if (action === "inspect-infected-rats") inspectInfectedRats();
+  if (action === "inspect-microscope") inspectMicroscope();
 }
 
 $("#new-game-button").addEventListener("click", () => startGame(true));
