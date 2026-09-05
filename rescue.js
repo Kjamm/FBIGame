@@ -2,7 +2,7 @@
 const rescueCircuits = [
   { id: "radio", name: "비상 송신기", demand: 4 },
   { id: "cold", name: "백신 보관 장치", demand: 3 },
-  { id: "gate", name: "송신 구역 격리문", demand: 5 },
+  { id: "gate", name: "송신 구역 격리문 모터", demand: 5 },
 ];
 const rescueRequiredAttachments = ["vaccine-validation-record", "survivor-signal"];
 
@@ -59,11 +59,17 @@ function openRescuePowerPanel() {
   if (!rescuePanelAvailable()) return;
   if (state.rescueLinkEstablished) { openRescueRadio(); return; }
   physicalPuzzleFrame("로비 비상 배전반", "POWER ROUTING · " + (state.rescueAntennaReady ? "ANTENNA DEPLOYED" : "ANTENNA STOWED"), `
-    <details class="vaccine-reference"><summary>수집한 비상 전원 기록 펼치기</summary><p>가용 출력 <strong>8칸</strong> · 송신기 4칸 · 냉장 보관 3칸 · 격리문 구동 5칸.</p><p>HXB가 차단한 주 통신망과 독립 비상 송신기는 별개 회선이다.</p></details>
-    <section class="rescue-conditions"><h3>현장 장비 상태</h3><p>백신 보관 장치는 모든 가동 단계에서 전원을 유지해야 한다.</p><p>안테나는 <strong>로비 송신 구역 격리문</strong> 뒤에 있다. 이 문은 생존자가 있는 3층 격리실 문과 별개다.</p><p>구동이 끝나면 문은 기계식으로 고정되어 유지 전력이 필요 없다. 송신 중에는 격리문 모터가 정지해야 한다.</p><strong class="rescue-antenna-state">${state.rescueAntennaReady ? "안테나 전개 완료 · 격리문 기계식 고정" : "안테나 접힘 · 격리문 닫힘"}</strong></section>
-    <div class="rescue-capacity"><div><span>배분한 전력</span><strong id="rescue-power-total">0 / 8</strong></div><div class="power-cell-meter" id="rescue-power-meter" aria-hidden="true"></div></div>
-    <div class="rescue-circuits">${rescueCircuits.map((circuit, i) => `<section><h3>${circuit.name}</h3><small>가동 요구량 ${circuit.demand}칸</small><div class="power-stepper"><button type="button" data-power-index="${i}" data-power-delta="-1" aria-label="${circuit.name} 전력 1칸 줄이기">−</button><output data-power-value="${i}">0</output><button type="button" data-power-index="${i}" data-power-delta="1" aria-label="${circuit.name} 전력 1칸 늘리기">+</button></div></section>`).join("")}</div>
-    <p class="handling-copy">+/−로 배분한 뒤 ‘배전 실행’을 누르자. 조정만으로는 가동하거나 오답 처리되지 않는다. 가동 사이의 전환은 장비가 안전하게 처리한다.</p>
+    <details class="vaccine-reference"><summary>수집한 비상 전원 기록 펼치기</summary><p>동시에 공급할 수 있는 최대 출력: <strong>8칸</strong></p><p>최소 가동 전력: 송신기 4칸 · 냉장 보관 3칸 · 격리문 모터 5칸.</p><p>HXB가 차단한 주 통신망과 독립 비상 송신기는 별개 회선이다.</p></details>
+    <section class="rescue-conditions"><h3>배전 규칙</h3>
+      <p><strong>출력 한도</strong> · 세 장치에 배분한 합계는 8칸 이하여야 한다. 8칸은 소모되는 배터리 잔량이 아닌 동시 출력 한도이며, 모두 사용할 필요는 없다.</p>
+      <p><strong>냉장 유지</strong> · 매번 ‘배전 실행’을 할 때 백신 보관 장치에 최소 3칸을 배분해야 한다. 각 장치의 표시값은 최소 가동 전력이며, 0칸은 전원 차단을 뜻한다.</p>
+      <p><strong>안테나 전개 조건</strong> · 로비 송신 구역 격리문이 완전히 열리면 안테나가 자동으로 펼쳐진다. 그전에는 송신기 전원을 차단해야 한다.</p>
+      <p><strong>문 개방 후</strong> · 문은 기계식으로 고정되어 모터 전원을 꺼도 열린 상태를 유지한다. 송신 중에는 격리문 모터에 배분한 전력이 반드시 0칸이어야 한다.</p>
+      <p class="handling-copy">이 격리문은 로비 송신 구역의 문이며, 생존자가 있는 3층 격리실 문과는 별개다.</p>
+      <strong class="rescue-antenna-state">${state.rescueAntennaReady ? "안테나 전개 완료 · 격리문 열림 / 기계식 고정" : "안테나 접힘 · 격리문 닫힘"}</strong></section>
+    <div class="rescue-capacity"><div><span>배분 설정 합계 / 출력 한도</span><strong id="rescue-power-total">0 / 8</strong></div><div class="power-cell-meter" id="rescue-power-meter" aria-hidden="true"></div></div>
+    <div class="rescue-circuits">${rescueCircuits.map((circuit, i) => `<section><h3>${circuit.name}</h3><small>최소 가동 전력 ${circuit.demand}칸</small><div class="power-stepper"><button type="button" data-power-index="${i}" data-power-delta="-1" aria-label="${circuit.name} 전력 1칸 줄이기">−</button><output data-power-value="${i}">0</output><button type="button" data-power-index="${i}" data-power-delta="1" aria-label="${circuit.name} 전력 1칸 늘리기">+</button></div></section>`).join("")}</div>
+    <p class="handling-copy">+/−는 다음에 적용할 배분값을 설정한다. ‘배전 실행’을 눌러야 조건을 판정하고 적용한다. 숫자를 조정하는 동안에는 기존 장비 상태와 냉장 보관이 유지되며, 오답으로 처리되지 않는다.</p>
     <button class="primary-button material-check-button" type="button" data-apply-rescue-power>배전 실행 <span>→</span></button><p class="material-feedback" id="rescue-power-feedback" aria-live="polite"></p>`, "rescue");
   $("#modal").classList.add("rescue-modal");
   document.querySelectorAll("[data-power-delta]").forEach((button) => button.addEventListener("click", () => adjustRescuePower(Number(button.dataset.powerIndex), Number(button.dataset.powerDelta))));
@@ -100,7 +106,7 @@ function applyRescuePower() {
     state.rescueAntennaReady = true;
     setActivity("냉장 보관을 유지하며 송신 구역 격리문을 구동했다. 안테나가 펼쳐지고 문은 기계식으로 고정됐다.");
     saveState(); render(); openRescuePowerPanel();
-    $("#rescue-power-feedback").textContent = "안테나 전개 완료. 다음 배전을 설정할 수 있다.";
+    $("#rescue-power-feedback").textContent = "격리문 개방·안테나 전개 완료. 문은 전원 없이 열린 상태를 유지한다. 표시된 숫자는 방금 실행한 배분값이며, 이제 다음 배전을 설정할 수 있다.";
   } else {
     state.rescueLinkEstablished = true;
     state.rescuePower = [4, 3, 0];

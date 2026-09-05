@@ -159,6 +159,7 @@ inspectIsolationHatch();$('[data-collect-power-record]').handlers.click();assert
 assert(inventoryGroup('emergency-power-record')==='evidence','record is evidence');
 var recordCount=state.inventory.length;collectEmergencyPowerRecord();assert(state.inventory.length===recordCount,'power record deduplicated');
 state.fluorescentOn=false;inspectItem('emergency-power-record');assert(!state.fluorescentOn && $('#modal-content').innerHTML.includes('HXB'),'item opens record not lamp');
+assert($('#modal-content').innerHTML.includes('동시에 공급할 수 있는 최대 출력') && $('#modal-content').innerHTML.includes('최소 가동 전력'),'record distinguishes capacity from minimum load');
 var activity=state.activity;openSurvivorSignal();assert($('#modal-content').innerHTML.includes('발신자 확인') && state.activity===activity,'signal updates identity without overwriting latest story');
 saveState();state=freshState();loadState();assert(state.emergencyPowerRecordCollected && isolationConversationComplete(),'completed conversation reloads');
 $('[data-signal-return-lobby]').handlers.click();flush(260);assert(state.scene==='lobby','return to lobby');
@@ -169,12 +170,17 @@ state.barricadeInstalled=true;goToLobby();flush(380);assert(state.rescueDefenseS
 render();assert($('#scene-image').attrs.src===undefined || $('#scene-image').src.includes('final-defense'),'final lobby image');
 openRescueRadio();assert($('#modal-content').innerHTML.includes('응답 없는'),'radio initially offline');
 openRescuePowerPanel();applyRescuePower();assert(state.rescuePowerFailures===0,'empty allocation safe');
+var powerCopy=$('#modal-content').innerHTML;
+assert(powerCopy.includes('모두 사용할 필요는 없다') && powerCopy.includes('최소 가동 전력'),'panel explains spare capacity and minimum loads');
+assert(powerCopy.includes('0칸은 전원 차단') && powerCopy.includes('반드시 0칸'),'panel defines power off and motor interlock');
+assert(powerCopy.includes('숫자를 조정하는 동안에는 기존 장비 상태와 냉장 보관이 유지'),'panel distinguishes draft settings from execution');
 adjustRescuePower(0,1);adjustRescuePower(0,-1);assert(state.rescuePowerFailures===0,'adjusting safe');
 state.rescuePower=[4,3,5];applyRescuePower();assert(state.rescuePowerFailures===1 && !state.rescueAntennaReady,'overload rejected');
 saveState();state=freshState();loadState();assert(state.rescuePower.join(',')==='4,3,5' && state.rescuePowerFailures===1,'allocation and failures persist');
 var previousBites=state.bites;applyRescuePower();assert(state.bites===previousBites+1 && state.paused,'second failure bites');flush(240);$('[data-survive]').handlers.click();
 assert($('#modal-content').innerHTML.includes('data-apply-rescue-power'),'power panel restored after bite');
 state.rescuePower=[0,3,5];applyRescuePower();assert(state.rescueAntennaReady && !state.rescueLinkEstablished,'gate plus cold unfolds antenna');
+assert($('#rescue-power-feedback').textContent.includes('문은 전원 없이 열린 상태를 유지'),'checkpoint explains mechanical hold');
 saveState();state=freshState();loadState();assert(state.rescueAntennaReady,'stage checkpoint persists');
 openRescuePowerPanel();state.rescuePower=[4,0,0];applyRescuePower();assert(!state.rescueLinkEstablished && state.bites===previousBites+1,'cold outage rejected; no duplicate puzzle bite');
 state.rescuePower=[4,3,0];applyRescuePower();assert(state.rescueLinkEstablished && !state.rescueRequestSent,'radio powered while cold maintained');
