@@ -130,11 +130,13 @@ function playPresidentVoice(record) {
 }
 
 function decorateExplorationHotspots(container) {
+  container.classList.toggle("rescue-lobby-hotspots", state.scene === "lobby" && state.rescueDefenseStarted);
   if (state.scene === "emergencyIsolationRoom") renderIsolationHotspots(container);
   if (state.scene === "vaccineDevelopmentLab") renderVaccineHotspots(container);
   if (state.scene === "lobby" && state.virusTargetIdentified && !(state.zombieSurgeActive && !state.barricadeInstalled)) {
     container.innerHTML = `<button class="hotspot directory-hotspot room-hotspot" type="button" data-action="open-floor-directory"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">층별 안내판</span></button>`;
   }
+  if (state.scene === "lobby" && state.rescueDefenseStarted) decorateRescueHotspots(container);
   const recordId = recordForScene();
   if (recordId) container.insertAdjacentHTML("beforeend", `<button class="hotspot trace-hotspot${state.inventory.includes(recordId) ? " completed" : ""}" type="button" data-action="inspect-president-trace"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">${presidentRecords[recordId].label}</span></button>`);
   const completed = {
@@ -315,6 +317,7 @@ function renderVialLabel(vial, back) {
 }
 
 function materialThreatActive(kind) {
+  if (kind === "rescue") return state.rescuePowerFailures > 0 && !state.rescuePowerBiteTriggered && !state.rescueLinkEstablished;
   if (kind === "vaccine") return state.vaccinePuzzleFailures > 0 && !state.vaccinePuzzleBiteTriggered && !state.vaccineValidated;
   const keys = { primer: ["primerPuzzleFailures", "primerPuzzleBiteTriggered", "primerCollected"], culture: ["culturePuzzleFailures", "culturePuzzleBiteTriggered", "cultureCellsCollected"], antibody: ["antibodyPuzzleFailures", "antibodyPuzzleBiteTriggered", "antibodyCollected"] }[kind];
   return Boolean(keys && state[keys[0]] > 0 && !state[keys[1]] && !state[keys[2]]);

@@ -11,6 +11,7 @@
     <script src="exploration.js" defer></script>
     <script src="vaccine.js" defer></script>
     <script src="isolation.js" defer></script>
+    <script src="rescue.js" defer></script>
     <script src="game.js" defer></script>
   </head>
   <body>
@@ -59,6 +60,7 @@
       <main class="scene-shell">
         <section class="scene" id="scene" aria-live="polite">
           <img id="scene-image" src="assets/images/cnu-lobby-outbreak.jpg" alt="어둡고 버려진 생명시스템과학대학 로비" />
+          <div class="defense-motion" aria-hidden="true"><img src="assets/images/cnu-lobby-final-defense.jpg" alt="" loading="lazy" /></div>
           <div class="scene-grade" aria-hidden="true"></div>
           <div class="outbreak-badge" aria-hidden="true"><i></i> OUTBREAK ACTIVE</div>
 
@@ -79,7 +81,7 @@
         <aside class="inventory-bar" aria-label="인벤토리">
           <button class="inventory-title" id="inventory-toggle" type="button" aria-expanded="true">
             <span>SURVIVAL KIT</span>
-            <span class="inventory-summary"><small id="item-count">1 / 19</small><i aria-hidden="true">⌃</i></span>
+            <span class="inventory-summary"><small id="item-count">1 / 20</small><i aria-hidden="true">⌃</i></span>
           </button>
           <nav class="inventory-categories" id="inventory-categories" aria-label="인벤토리 분류"></nav>
           <div class="inventory-items" id="inventory-items"></div>
