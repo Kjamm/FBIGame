@@ -8,6 +8,9 @@
     <title>생정융: 좀비 바이러스로부터 탈출하라</title>
     <link rel="preload" href="assets/images/cnu-lobby-outbreak.jpg" as="image" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="exploration.js" defer></script>
+    <script src="vaccine.js" defer></script>
+    <script src="isolation.js" defer></script>
     <script src="game.js" defer></script>
   </head>
   <body>
@@ -59,6 +62,7 @@
           <div class="scene-grade" aria-hidden="true"></div>
           <div class="outbreak-badge" aria-hidden="true"><i></i> OUTBREAK ACTIVE</div>
 
+          <div class="approach-scene" id="approach-scene" hidden aria-hidden="true"><img src="assets/images/cnu-zombie-chase.jpg" alt="" /></div>
           <div class="hotspots" id="hotspots">
             <button class="hotspot paper-hotspot" data-action="inspect-letter" type="button">
               <span class="pulse" aria-hidden="true"></span>
@@ -75,8 +79,9 @@
         <aside class="inventory-bar" aria-label="인벤토리">
           <button class="inventory-title" id="inventory-toggle" type="button" aria-expanded="true">
             <span>SURVIVAL KIT</span>
-            <span class="inventory-summary"><small id="item-count">1 / 12</small><i aria-hidden="true">⌃</i></span>
+            <span class="inventory-summary"><small id="item-count">1 / 19</small><i aria-hidden="true">⌃</i></span>
           </button>
+          <nav class="inventory-categories" id="inventory-categories" aria-label="인벤토리 분류"></nav>
           <div class="inventory-items" id="inventory-items"></div>
           <button class="log-button" id="log-button" type="button"><span>!</span><div><small>최근 기록</small><strong id="activity">버스에서 가져온 캠퍼스 안내도가 있다.</strong></div></button>
         </aside>

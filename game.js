@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 
 const STORAGE_KEY = "cnu-biozombie-chapter-01";
 const LIMIT_SECONDS = 60 * 60;
-const INVENTORY_CAPACITY = 12;
+const INVENTORY_CAPACITY = 19;
 const MICROSCOPE_COARSE_TARGET = 5;
 const MICROSCOPE_FINE_TARGET = 2;
 
@@ -77,10 +77,29 @@ const initialState = {
   antibodyPuzzleFailures: 0,
   antibodyPuzzleBiteTriggered: false,
   vaccineMaterialsComplete: false,
+  selectedCultureDish: "",
+  selectedAntibodyVial: "",
+  antibodyLabelFlipped: false,
+  vaccineLabEntered: false,
+  vaccineSlots: ["", "", ""],
+  vaccineBenchReady: false,
+  vaccineCandidateSelection: "",
+  vaccinePuzzleFailures: 0,
+  vaccinePuzzleBiteTriggered: false,
+  vaccineValidated: false,
+  survivorSignalFound: false,
+  isolationRoomEntered: false,
+  presidentConfronted: false,
+  isolationTopicsRead: [],
+  isolationActiveTopic: "",
+  emergencyPowerRecordCollected: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
 const itemData = {
+  "emergency-power-record": { name: "비상 전원 기록", icon: "ϟ", description: "로비 배전반 · 외부 통신 차단" },
+  ...vaccineItemData,
+  ...presidentRecordItems,
   "campus-map": {
     name: "미니맵",
     icon: "⌖",
@@ -144,6 +163,16 @@ const itemData = {
 };
 
 const scenes = {
+  emergencyIsolationRoom: {
+    image: "assets/images/cnu-emergency-isolation-room.jpg",
+    alt: "비상 격리실 유리문 안에 중단발 머리와 붉은 완장의 학생회장이 서 있고 앞에는 전달함이 있다",
+    number: "14", name: "비상 격리실", hud: "3F · 비상 격리실",
+  },
+  vaccineDevelopmentLab: {
+    image: "assets/images/cnu-vaccine-development-lab.jpg",
+    alt: "비상 조명 아래 검증 장비와 연구 기록 단말기가 남아 있는 통합 백신 개발실",
+    number: "13", name: "통합 백신 개발실", hud: "3F · 통합 백신 개발실",
+  },
   lobby: {
     image: "assets/images/cnu-lobby-outbreak.jpg",
     alt: "어둡고 버려진 생명시스템과학대학 로비",
@@ -289,7 +318,7 @@ let activeSequenceGap = 0;
 let sceneTransitionId = 0;
 let lastHotspotSignature = "";
 let lastInventoryMarkup = "";
-const MODAL_STYLES = ["terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal", "bite-modal"];
+const MODAL_STYLES = ["terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal", "bite-modal", "blackout-modal", "exploration-modal", "vaccine-modal", "isolation-modal"];
 const mobileLayout = window.matchMedia("(max-width: 560px)");
 let inventoryExpanded = !mobileLayout.matches;
 
@@ -298,6 +327,8 @@ function freshState() {
     ...initialState,
     inventory: [...initialState.inventory],
     sequenceRepairBases: [...initialState.sequenceRepairBases],
+    vaccineSlots: [...initialState.vaccineSlots],
+    isolationTopicsRead: [],
   };
 }
 
@@ -319,7 +350,7 @@ function loadState() {
         ? parsed.sequenceRepairBases.map((base) => ["A", "T", "G", "C"].includes(base) ? base : "")
         : [...initialState.sequenceRepairBases],
     };
-    for (const key of ["bites", "elapsed", "primerPuzzleFailures", "culturePuzzleFailures", "antibodyPuzzleFailures"]) {
+    for (const key of ["bites", "elapsed", "primerPuzzleFailures", "culturePuzzleFailures", "antibodyPuzzleFailures", "vaccinePuzzleFailures"]) {
       state[key] = Number.isFinite(state[key]) ? Math.max(0, Math.floor(state[key])) : 0;
     }
     if (state.bites >= 3 || state.elapsed >= LIMIT_SECONDS) state.failed = true;
@@ -368,6 +399,8 @@ function loadState() {
     if (state.primerCollected && state.cultureCellsCollected && state.antibodyCollected) {
       state.vaccineMaterialsComplete = true;
     }
+    normalizeVaccineState();
+    normalizeIsolationState();
     delete state.chapterComplete;
     delete state.readingRoomReached;
     delete state.microscopeFocus;
@@ -424,6 +457,8 @@ function createNoiseBuffer(context, seconds = 5) {
 
 function currentBgmProfile() {
   const sceneProfiles = {
+    emergencyIsolationRoom: { notes: [41.2, 49, 43.65, 46.25], filter: 450, noise: 0.013, pulse: 0.32, signal: 207.65 },
+    vaccineDevelopmentLab: { notes: [46.25, 55, 65.41, 49], filter: 630, noise: 0.015, pulse: 0.5, signal: 329.63 },
     coldStorage: { notes: [36.71, 41.2, 34.65, 43.65], filter: 330, noise: 0.034, pulse: 0.34, signal: 196 },
     bioinformaticsLab: { notes: [55, 46.25, 65.41, 51.91], filter: 610, noise: 0.018, pulse: 0.48, signal: 261.63 },
     molecularBiologyLab: { notes: [49, 55, 46.25, 61.74], filter: 560, noise: 0.02, pulse: 0.52, signal: 293.66 },
@@ -578,12 +613,14 @@ function startBgm() {
 }
 
 function suspendBgm() {
+  stopExplorationAudio();
   if (audioContext?.state === "running") {
     audioContext.suspend().catch(() => {});
   }
 }
 
 function stopBgm() {
+  stopExplorationAudio();
   if (bgmVariationTimer != null) window.clearInterval(bgmVariationTimer);
   bgmVariationTimer = null;
   bgmNodes.forEach((node) => {
@@ -612,6 +649,8 @@ function toggleBgm() {
 function startGame(reset = false) {
   if (!reset && state.failed) return;
   if (reset) {
+    resetExploration();
+    closeModal();
     sceneTransitionId += 1;
     const audioEnabled = state.audioEnabled;
     state = freshState();
@@ -640,13 +679,17 @@ function setActivity(message) {
 }
 
 function addItem(id) {
-  if (!state.inventory.includes(id)) state.inventory.push(id);
+  if (!state.inventory.includes(id)) {
+    state.inventory.push(id);
+    if (!$("#game").hidden) markInventoryNew(id);
+  }
 }
 
 function renderInventory() {
   const container = $("#inventory-items");
+  renderInventoryCategories();
   $("#item-count").textContent = `${state.inventory.length} / ${INVENTORY_CAPACITY}`;
-  const cards = state.inventory.map((id) => {
+  const cards = state.inventory.filter((id) => inventoryGroup(id) === inventoryCategory).map((id) => {
     const item = itemData[id];
     const description = id === "research-fragment"
       ? state.presidentMotiveRevealed
@@ -671,6 +714,7 @@ function renderInventory() {
       : item.description;
     return `
       <button class="item${state.selectedItem === id ? " selected" : ""}" type="button" data-item="${id}">
+        ${newInventoryItems.has(id) ? '<span class="inventory-new">NEW</span>' : ""}
         <span class="item-icon" aria-hidden="true">${item.icon}</span>
         <strong>${item.name}</strong>
         <small>${description}</small>
@@ -709,10 +753,9 @@ function handleLayoutChange(event) {
 
 function renderHotspots() {
   const container = $("#hotspots");
-  const signature = JSON.stringify([state.scene, ...Object.values(state).filter((value) => typeof value === "boolean")]);
+  const signature = JSON.stringify([state.scene, state.inventory, state.isolationTopicsRead, ...Object.values(state).filter((value) => typeof value === "boolean")]);
   if (signature === lastHotspotSignature) return;
   lastHotspotSignature = signature;
-  container.classList.toggle("expanded-routes", state.scene === "lobby" && state.virusTargetIdentified && !state.zombieSurgeActive);
   if (state.scene === "lobby") {
     container.innerHTML = `
       ${!state.letterRead ? `
@@ -863,6 +906,7 @@ function renderHotspots() {
   } else {
     container.innerHTML = `<button class="scene-back" data-action="go-lobby" type="button">← 로비</button>`;
   }
+  decorateExplorationHotspots(container);
 }
 
 function renderScene() {
@@ -885,6 +929,7 @@ function render() {
   if (!state.paused && !state.failed) refreshBgmMood();
   renderScene();
   renderInventory();
+  renderApproachScene();
   updateBarricadeCountdownDisplays();
 }
 
@@ -916,6 +961,7 @@ function modalFrame({ code, title, body, close = true }) {
 }
 
 function showModal(html) {
+  stopExplorationAudio();
   $("#modal").classList.remove(...MODAL_STYLES);
   $("#modal-content").innerHTML = html;
   $("#modal").scrollTop = 0;
@@ -925,6 +971,7 @@ function showModal(html) {
 }
 
 function closeModal() {
+  stopExplorationAudio();
   if ($("#modal").open) $("#modal").close();
   $("#modal").classList.remove(...MODAL_STYLES);
 }
@@ -2130,6 +2177,7 @@ function targetProteinReportBody() {
     <p class="result-copy target-result-copy">훼손된 염기서열에서 바이러스 원본의 핵심 서명을 복원했다. ZV-SPIKE가 숙주세포에 달라붙지 못하게 막으면 감염을 시작할 수 없다.</p>
     <div class="emergency-protocol"><small>VACCINE TARGET ACQUIRED</small><strong>분석 서버에서 대학원생이 사고 직전에 남긴 비상 제조 목록이 복구됐다. 백신 재료는 감염 확산에 대비해 건물 여러 연구실에 분산되어 있다.</strong></div>
     ${vaccineMaterialManifest()}
+    ${vaccineLabAccessBody()}
     ${state.vaccineMaterialsComplete ? "" : `<button class="primary-button material-route-button" type="button" data-start-material-hunt>로비에서 재료 수집 시작 <span>→</span></button>`}`;
 }
 
@@ -2226,42 +2274,24 @@ function enterReagentStorage() {
   );
 }
 
-function primerChoiceButton(role, value, label) {
-  const selected = role === "forward" ? state.primerForwardSelection === value : state.primerReverseSelection === value;
-  return `<button class="primer-option${selected ? " selected" : ""}" type="button" data-primer-role="${role}" data-primer-value="${value}"><code>5′-${value}-3′</code><span>${label}</span></button>`;
-}
-
 function openPrimerPuzzle() {
   if (state.primerCollected) {
     showMaterialItem("spike-primer-set");
     return;
   }
-  showModal(modalFrame({
-    code: "PCR DESIGN · ZV-SPIKE",
-    title: "프라이머 방향을 맞춰라",
-    body: `
-      <div class="primer-target-map"><small>TARGET REGION · CODING STRAND</small><div><code>5′—GCTACG</code><strong>ZV-SPIKE</strong><code>TTACGA—3′</code></div></div>
-      <div class="primer-choice-grid">
-        <section><h3>FORWARD · 5′ → 3′</h3>${primerChoiceButton("forward", "GCTACG", "후보 A")}${primerChoiceButton("forward", "CGATGC", "후보 B")}${primerChoiceButton("forward", "TTACGA", "후보 C")}</section>
-        <section><h3>REVERSE · 5′ → 3′</h3>${primerChoiceButton("reverse", "AATGCT", "후보 A")}${primerChoiceButton("reverse", "TCGTAA", "후보 B")}${primerChoiceButton("reverse", "TTACGA", "후보 C")}</section>
-      </div>
-      <button class="primary-button material-check-button" type="button" data-check-primers>프라이머 검증 <span>→</span></button>
-      <p class="material-feedback" id="primer-feedback" aria-live="polite">각 방향에서 하나씩 선택하자.</p>`,
-  }));
-  $("#modal").classList.add("evidence-modal", "materials-modal");
-  document.querySelectorAll("[data-primer-role]").forEach((button) => button.addEventListener("click", () => selectPrimer(button.dataset.primerRole, button.dataset.primerValue)));
-  $("[data-check-primers]").addEventListener("click", checkPrimerPuzzle);
+  showPrimerWorkbench();
 }
 
 function selectPrimer(role, value) {
+  if (state.paused || state.failed || !["forward", "reverse"].includes(role) || !primerTubeSequences.includes(value)) return;
   if (role === "forward") state.primerForwardSelection = value;
   else state.primerReverseSelection = value;
   saveState();
-  document.querySelectorAll(`[data-primer-role="${role}"]`).forEach((button) => button.classList.toggle("selected", button.dataset.primerValue === value));
+  updatePcrSlots();
   const feedback = $("#primer-feedback");
   if (feedback) {
     feedback.classList.remove("error");
-    feedback.textContent = state.primerForwardSelection && state.primerReverseSelection ? "두 프라이머를 선택했다. 방향과 상보성을 검증하자." : "반대쪽 프라이머도 선택하자.";
+    feedback.textContent = state.primerForwardSelection && state.primerReverseSelection ? "두 슬롯에 튜브를 배치했다. 검증을 눌러 확정하자." : "나머지 슬롯에도 튜브를 배치하자.";
   }
 }
 
@@ -2304,6 +2334,7 @@ function registerMaterialPuzzleFailure(kind, feedback) {
   feedback.textContent = state[config.bitten]
     ? "오답이다."
     : "오답이다. 가까워진 발소리가 문 바로 밖에서 멈췄다. 한 번 더 틀리면 따라잡힌다.";
+  revealApproachingZombie(kind);
   return false;
 }
 
@@ -2330,27 +2361,12 @@ function openCulturePuzzle() {
     showMaterialItem("culture-cells");
     return;
   }
-  const cultures = [
-    ["A-03", "35%", "세포 밀도 낮음", "sparse"],
-    ["B-12", "75%", "균일 · 오염 없음", "healthy"],
-    ["C-04", "95%", "과밀 · 세포 탈락", "overgrown"],
-    ["D-09", "72%", "부유 입자 증가", "contaminated"],
-  ];
-  showModal(modalFrame({
-    code: "CELL CULTURE · QUALITY CONTROL",
-    title: "사용 가능한 배양세포를 골라라",
-    body: `
-      <div class="culture-requirement"><span>◉</span><div><small>ANTIGEN EXPRESSION CONDITION</small><strong>부착 상태 양호 · 오염 없음 · Confluency 70–80%</strong></div></div>
-      <p class="sequence-guide">관찰 기록과 세포 밀도를 비교해 바로 사용할 수 있는 배양 접시 하나를 선택하자.</p>
-      <div class="culture-dish-grid">${cultures.map(([id, density, note, visual]) => `<button class="culture-dish-card ${visual}" type="button" data-culture-id="${id}"><span class="culture-dish" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><strong>${id}</strong><small>Confluency ${density}</small><em>${note}</em></button>`).join("")}</div>
-      <p class="material-feedback" id="culture-feedback" aria-live="polite">배양 접시를 선택하라.</p>`,
-  }));
-  $("#modal").classList.add("evidence-modal", "materials-modal");
-  document.querySelectorAll("[data-culture-id]").forEach((button) => button.addEventListener("click", () => checkCultureDish(button.dataset.cultureId)));
+  showCultureBench();
 }
 
 function checkCultureDish(id) {
   if (state.paused || state.failed || state.cultureCellsCollected) return;
+  if (!cultureSamples.some((sample) => sample.id === id) || state.selectedCultureDish !== id) return;
   const feedback = $("#culture-feedback");
   if (id !== "B-12") {
     document.querySelectorAll("[data-culture-id]").forEach((button) => button.classList.toggle("wrong", button.dataset.cultureId === id));
@@ -2368,26 +2384,12 @@ function openAntibodyPuzzle() {
     showMaterialItem("neutralizing-antibody");
     return;
   }
-  const vials = [
-    ["R-04", "anti-ZV-SPIKE RBD", "IgG · 4°C · 맑음"],
-    ["R-11", "anti-ZV-NUCLEO", "IgG · 4°C · 맑음"],
-    ["F-02", "anti-ZV-SPIKE RBD", "IgG · −20°C · 해동 3회"],
-    ["C-08", "anti-ZV-SPIKE RBD", "IgM · 4°C · 침전 관찰"],
-  ];
-  showModal(modalFrame({
-    code: "COLD REAGENT · ANTIBODY VALIDATION",
-    title: "사용 가능한 항체를 골라라",
-    body: `
-      <div class="antibody-requirement"><span>Y</span><div><small>VALIDATION STANDARD</small><strong>ZV-SPIKE 수용체 결합부위 특이적 IgG</strong><p>2–8°C 보관 · 동결 이력 없음 · 침전 없음</p></div></div>
-      <div class="antibody-vial-grid">${vials.map(([id, target, condition]) => `<button type="button" data-antibody-id="${id}"><span class="vial-visual" aria-hidden="true"><i></i><b>${id}</b></span><div><strong>${target}</strong><small>${condition}</small></div></button>`).join("")}</div>
-      <p class="material-feedback" id="antibody-feedback" aria-live="polite">항체 바이알을 선택하라.</p>`,
-  }));
-  $("#modal").classList.add("evidence-modal", "materials-modal");
-  document.querySelectorAll("[data-antibody-id]").forEach((button) => button.addEventListener("click", () => checkAntibodyVial(button.dataset.antibodyId)));
+  showAntibodyColdRack();
 }
 
 function checkAntibodyVial(id) {
   if (state.paused || state.failed || state.antibodyCollected) return;
+  if (!antibodySamples.some((sample) => sample.id === id) || state.selectedAntibodyVial !== id || !state.antibodyLabelFlipped) return;
   const feedback = $("#antibody-feedback");
   if (id !== "R-04") {
     document.querySelectorAll("[data-antibody-id]").forEach((button) => button.classList.toggle("wrong", button.dataset.antibodyId === id));
@@ -2414,10 +2416,10 @@ function showMaterialAcquired(itemId, message) {
   showModal(modalFrame({
     code: complete ? "MATERIALS 03 / 03 · READY" : `MATERIAL SECURED · ${String(collectedMaterialCount()).padStart(2, "0")} / 03`,
     title: complete ? "백신 재료 확보 완료" : itemData[itemId].name,
-    body: `<div class="material-acquired"><span>${itemData[itemId].icon}</span><div><small>INVENTORY UPDATED</small><strong>${message}</strong></div><b>SECURED</b></div>${vaccineMaterialManifest()}<div class="emergency-protocol"><small>${complete ? "NEXT · VACCINE ASSEMBLY" : "CONTINUE COLLECTION"}</small><strong>${complete ? "모든 재료가 준비됐다. 다음 단계에서는 ZV-SPIKE 항원을 발현하고 백신 후보를 조립한다." : `로비로 돌아가 남은 ${3 - collectedMaterialCount()}개의 재료를 찾자.`}</strong></div><button class="primary-button material-route-button" type="button" data-return-materials>${complete ? "재료 상자를 챙긴다" : "로비로 돌아간다"} <span>→</span></button>`,
+    body: `<div class="material-acquired"><span>${itemData[itemId].icon}</span><div><small>INVENTORY UPDATED</small><strong>${message}</strong></div><b>SECURED</b></div>${vaccineMaterialManifest()}${complete ? vaccineLabAccessBody() : `<p class="result-copy">남은 ${3 - collectedMaterialCount()}개의 재료를 찾자.</p>`}<button class="primary-button material-route-button" type="button" data-return-materials>로비로 돌아간다 <span>→</span></button>`,
   }));
   $("#modal").classList.add("evidence-modal", "materials-modal");
-  $("[data-return-materials]").addEventListener("click", complete ? closeModal : goToLobby);
+  $("[data-return-materials]").addEventListener("click", goToLobby);
 }
 
 function showMaterialItem(id) {
@@ -2679,9 +2681,19 @@ function checkJournalPuzzleAnswer(event) {
 }
 
 function inspectItem(id) {
+  newInventoryItems.delete(id);
   state.selectedItem = id;
   saveState();
   renderInventory();
+  if (id === "emergency-power-record") { openEmergencyPowerRecord(); return; }
+  if (vaccineItemData[id]) {
+    showVaccineItem(id);
+    return;
+  }
+  if (presidentRecords[id]) {
+    openPresidentRecord(id);
+    return;
+  }
   if (id === "campus-map") {
     openMiniMap();
     return;
@@ -2774,6 +2786,8 @@ function openMiniMap() {
         ${state.cctvArchiveSolved ? `<div class="map-node node-cold-storage${coldStorageCurrent ? " current" : ""}">3층<br />저온 보관실</div>` : ""}
         ${state.sequenceChipCollected ? `<div class="map-node node-bioinformatics-lab${bioinformaticsLabCurrent ? " current" : ""}">생물정보<br />분석실</div>` : ""}
         ${state.virusTargetIdentified ? `<div class="map-node node-molecular-lab${molecularLabCurrent ? " current" : ""}">분자생물<br />학실</div><div class="map-node node-cell-culture${cellCultureLabCurrent ? " current" : ""}">세포<br />배양실</div><div class="map-node node-reagent-storage${reagentStorageCurrent ? " current" : ""}">시약<br />보관실</div>` : ""}
+        ${canAccessVaccineLab() ? `<div class="map-node${state.scene === "vaccineDevelopmentLab" ? " current" : ""}">3층<br />통합 백신 개발실</div>` : ""}
+        ${canAccessIsolationRoom() ? `<div class="map-node${state.scene === "emergencyIsolationRoom" ? " current" : ""}">3층<br />비상 격리실</div>` : ""}
         <div class="zombie-signal${state.zombieSurgeActive ? " surge" : ""}"><strong>${state.zombieDistance}m</strong><small>${state.zombieSurgeActive ? "1F 대규모 감지" : "좀비 무리"}</small></div>
       </div>
       <div class="status-grid"><div><small>현재 위치</small><strong>${scenes[state.scene].hud}</strong></div><div><small>최근접 좀비</small><strong>${state.zombieDistance}m</strong></div><div><small>물림</small><strong>${state.bites} / 3</strong></div></div>`,
@@ -2851,6 +2865,10 @@ function triggerZombieAttack(source = "distance") {
       code: "REAGENT ROOM AMBUSH",
       activity: "항체 선택을 두 번 틀리는 사이 시약보관실로 들어온 좀비에게 물렸다.",
     },
+    "vaccine-puzzle": {
+      code: "VALIDATION LAB AMBUSH",
+      activity: "검증 장비의 경고음이 반복되자 통합 백신 개발실 문을 넘어온 좀비에게 물렸다.",
+    },
     distance: {
       code: "ATTACK",
       activity: "좀비 무리와의 거리가 0m가 되어 공격당했다.",
@@ -2866,7 +2884,7 @@ function triggerZombieAttack(source = "distance") {
       ? 8
       : source === "c07-puzzle"
         ? Math.min(state.zombieDistance, 32)
-      : ["primer-puzzle", "culture-puzzle", "antibody-puzzle"].includes(source)
+      : ["primer-puzzle", "culture-puzzle", "antibody-puzzle", "vaccine-puzzle"].includes(source)
         ? Math.min(state.zombieDistance, 24)
       : 60;
   state.paused = true;
@@ -2878,11 +2896,11 @@ function triggerZombieAttack(source = "distance") {
   if (state.bites >= 3) {
     state.failed = true;
     saveState();
-    showBiteMark(true, source);
+    showBiteTransition(true, source);
     return;
   }
 
-  showBiteMark(false, source);
+  showBiteTransition(false, source);
 }
 
 function showBiteMark(finalBite, source) {
@@ -2908,6 +2926,7 @@ function showBiteMark(finalBite, source) {
       "primer-puzzle": openPrimerPuzzle,
       "culture-puzzle": openCulturePuzzle,
       "antibody-puzzle": openAntibodyPuzzle,
+      "vaccine-puzzle": openVaccineWorkbench,
     }[source];
     if (retry) retry();
   });
@@ -2928,6 +2947,16 @@ function showInfectionFailure() {
 }
 
 function handleSceneAction(action) {
+  if (state.failed || state.paused) return;
+  if (action === "enter-isolation-room") enterIsolationRoom();
+  if (action === "talk-president") openPresidentConversation();
+  if (action === "inspect-isolation-hatch") inspectIsolationHatch();
+  if (action === "enter-vaccine-lab") enterVaccineLab();
+  if (action === "inspect-vaccine-bench") openVaccineWorkbench();
+  if (action === "inspect-vaccine-log") openVaccineLog();
+  if (action === "inspect-survivor-signal") openSurvivorSignal();
+  if (action === "open-floor-directory") openFloorDirectory();
+  if (action === "inspect-president-trace") openPresidentRecord(recordForScene());
   if (action === "inspect-letter") inspectLetter();
   if (action === "go-hallway") transitionTo("hallway");
   if (action === "go-lobby") goToLobby();
