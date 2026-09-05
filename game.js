@@ -18,8 +18,8 @@ const initialState = {
   selectedItem: null,
   zombieDistance: 120,
   bites: 0,
+  pendingBiteSource: null,
   wrongDoorCount: 0,
-  letterHints: 0,
   terminalCwd: "/home/pc",
   terminalSolved: false,
   b17Inspected: false,
@@ -66,10 +66,16 @@ const initialState = {
   primerForwardSelection: "",
   primerReverseSelection: "",
   primerCollected: false,
+  primerPuzzleFailures: 0,
+  primerPuzzleBiteTriggered: false,
   cellCultureLabEntered: false,
   cultureCellsCollected: false,
+  culturePuzzleFailures: 0,
+  culturePuzzleBiteTriggered: false,
   reagentStorageEntered: false,
   antibodyCollected: false,
+  antibodyPuzzleFailures: 0,
+  antibodyPuzzleBiteTriggered: false,
   vaccineMaterialsComplete: false,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
@@ -274,8 +280,16 @@ let state = freshState();
 let failureShown = false;
 let audioContext = null;
 let bgmNodes = [];
+let bgmController = null;
+let bgmVariationTimer = null;
+let bgmVariationStep = 0;
+let bgmMoodKey = "";
 let c07MovedMatchId = null;
 let activeSequenceGap = 0;
+let sceneTransitionId = 0;
+let lastHotspotSignature = "";
+let lastInventoryMarkup = "";
+const MODAL_STYLES = ["terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal", "bite-modal"];
 const mobileLayout = window.matchMedia("(max-width: 560px)");
 let inventoryExpanded = !mobileLayout.matches;
 
@@ -300,11 +314,15 @@ function loadState() {
       ...freshState(),
       ...parsed,
       paused: false,
-      inventory: Array.isArray(parsed.inventory) ? parsed.inventory : ["campus-map"],
+      inventory: Array.isArray(parsed.inventory) ? [...new Set(parsed.inventory.filter((id) => Object.hasOwn(itemData, id)))] : ["campus-map"],
       sequenceRepairBases: Array.isArray(parsed.sequenceRepairBases) && parsed.sequenceRepairBases.length === 5
-        ? parsed.sequenceRepairBases
+        ? parsed.sequenceRepairBases.map((base) => ["A", "T", "G", "C"].includes(base) ? base : "")
         : [...initialState.sequenceRepairBases],
     };
+    for (const key of ["bites", "elapsed", "primerPuzzleFailures", "culturePuzzleFailures", "antibodyPuzzleFailures"]) {
+      state[key] = Number.isFinite(state[key]) ? Math.max(0, Math.floor(state[key])) : 0;
+    }
+    if (state.bites >= 3 || state.elapsed >= LIMIT_SECONDS) state.failed = true;
     if (state.letterRead) {
       addItem("graduate-letter");
       addItem("fluorescent-lamp");
@@ -404,6 +422,61 @@ function createNoiseBuffer(context, seconds = 5) {
   return buffer;
 }
 
+function currentBgmProfile() {
+  const sceneProfiles = {
+    coldStorage: { notes: [36.71, 41.2, 34.65, 43.65], filter: 330, noise: 0.034, pulse: 0.34, signal: 196 },
+    bioinformaticsLab: { notes: [55, 46.25, 65.41, 51.91], filter: 610, noise: 0.018, pulse: 0.48, signal: 261.63 },
+    molecularBiologyLab: { notes: [49, 55, 46.25, 61.74], filter: 560, noise: 0.02, pulse: 0.52, signal: 293.66 },
+    cellCultureLab: { notes: [43.65, 51.91, 49, 58.27], filter: 520, noise: 0.016, pulse: 0.4, signal: 246.94 },
+    reagentStorage: { notes: [38.89, 46.25, 36.71, 43.65], filter: 370, noise: 0.03, pulse: 0.38, signal: 220 },
+    computerLab: { notes: [51.91, 43.65, 58.27, 46.25], filter: 580, noise: 0.017, pulse: 0.55, signal: 277.18 },
+  };
+  const base = sceneProfiles[state.scene] || { notes: [43.65, 38.89, 49, 41.2], filter: 430, noise: 0.025, pulse: 0.42, signal: 196 };
+  const danger = state.zombieSurgeActive || state.zombieDistance <= 30;
+  return {
+    ...base,
+    danger,
+    filter: danger ? Math.min(base.filter, 310) : base.filter,
+    noise: danger ? Math.max(base.noise, 0.042) : base.noise,
+    pulse: danger ? 0.82 : base.pulse,
+  };
+}
+
+function advanceBgmVariation(force = false) {
+  if (!audioContext || !bgmController) return;
+  if (!force && (state.paused || state.failed || audioContext.state !== "running")) return;
+  const profile = currentBgmProfile();
+  const moodKey = `${state.scene}:${profile.danger ? "danger" : "search"}`;
+  if (!force && moodKey === bgmMoodKey) bgmVariationStep += 1;
+  else if (moodKey !== bgmMoodKey) bgmVariationStep = 0;
+  bgmMoodKey = moodKey;
+  const note = profile.notes[bgmVariationStep % profile.notes.length];
+  const now = audioContext.currentTime;
+  const glide = force ? 0.08 : 2.8;
+  const set = (parameter, value) => {
+    const current = parameter.value;
+    parameter.cancelScheduledValues(now);
+    parameter.setValueAtTime(current, now);
+    parameter.linearRampToValueAtTime(value, now + glide);
+  };
+  set(bgmController.drone.frequency, note);
+  set(bgmController.subDrone.frequency, note * 1.5);
+  set(bgmController.pad.frequency, note * (profile.danger ? 2 : 2.5));
+  set(bgmController.signal.frequency, profile.signal * [1, 1.125, 0.875, 1.25][bgmVariationStep % 4]);
+  set(bgmController.lowpass.frequency, profile.filter);
+  set(bgmController.noiseGain.gain, profile.noise);
+  set(bgmController.pulseLfo.frequency, profile.pulse);
+  set(bgmController.pulseGain.gain, profile.danger ? 0.045 : 0.024);
+  set(bgmController.signalGain.gain, bgmVariationStep % 3 === 1 ? 0.012 : 0.004);
+}
+
+function refreshBgmMood() {
+  if (!audioContext || !bgmController) return;
+  const profile = currentBgmProfile();
+  const nextKey = `${state.scene}:${profile.danger ? "danger" : "search"}`;
+  if (nextKey !== bgmMoodKey) advanceBgmVariation(true);
+}
+
 function startBgm() {
   if (!state.audioEnabled || state.paused) return;
 
@@ -411,6 +484,7 @@ function startBgm() {
     if (audioContext.state === "suspended") {
       audioContext.resume().catch(() => {});
     }
+    refreshBgmMood();
     return;
   }
 
@@ -419,6 +493,7 @@ function startBgm() {
 
   try {
     const context = new AudioContextClass();
+    audioContext = context;
     const master = context.createGain();
     const lowpass = context.createBiquadFilter();
     const droneGain = context.createGain();
@@ -427,10 +502,14 @@ function startBgm() {
     const noiseFilter = context.createBiquadFilter();
     const pulseGain = context.createGain();
     const pulseLfoGain = context.createGain();
+    const padGain = context.createGain();
+    const signalGain = context.createGain();
     const drone = context.createOscillator();
     const subDrone = context.createOscillator();
     const pulse = context.createOscillator();
     const pulseLfo = context.createOscillator();
+    const pad = context.createOscillator();
+    const signal = context.createOscillator();
     const noise = context.createBufferSource();
 
     master.gain.setValueAtTime(0.045, context.currentTime);
@@ -467,6 +546,18 @@ function startBgm() {
     pulseLfo.connect(pulseLfoGain);
     pulseLfoGain.connect(pulseGain.gain);
 
+    pad.type = "triangle";
+    pad.frequency.setValueAtTime(109.13, context.currentTime);
+    padGain.gain.setValueAtTime(0.018, context.currentTime);
+    pad.connect(padGain);
+    padGain.connect(lowpass);
+
+    signal.type = "sine";
+    signal.frequency.setValueAtTime(196, context.currentTime);
+    signalGain.gain.setValueAtTime(0.004, context.currentTime);
+    signal.connect(signalGain);
+    signalGain.connect(master);
+
     noise.buffer = createNoiseBuffer(context);
     noise.loop = true;
     noiseFilter.type = "lowpass";
@@ -476,12 +567,13 @@ function startBgm() {
     noiseFilter.connect(noiseGain);
     noiseGain.connect(master);
 
-    [drone, subDrone, pulse, pulseLfo, noise].forEach((source) => source.start());
-    audioContext = context;
-    bgmNodes = [drone, subDrone, pulse, pulseLfo, noise, droneGain, subGain, pulseGain, pulseLfoGain, noiseFilter, noiseGain, lowpass, master];
+    bgmController = { drone, subDrone, pad, signal, lowpass, noiseGain, pulseGain, pulseLfo, signalGain };
+    bgmNodes = [drone, subDrone, pulse, pulseLfo, pad, signal, noise, droneGain, subGain, pulseGain, pulseLfoGain, padGain, signalGain, noiseFilter, noiseGain, lowpass, master];
+    [drone, subDrone, pulse, pulseLfo, pad, signal, noise].forEach((source) => source.start());
+    advanceBgmVariation(true);
+    bgmVariationTimer = window.setInterval(() => advanceBgmVariation(), 7000);
   } catch {
-    audioContext = null;
-    bgmNodes = [];
+    stopBgm();
   }
 }
 
@@ -492,6 +584,8 @@ function suspendBgm() {
 }
 
 function stopBgm() {
+  if (bgmVariationTimer != null) window.clearInterval(bgmVariationTimer);
+  bgmVariationTimer = null;
   bgmNodes.forEach((node) => {
     try {
       if (typeof node.stop === "function") node.stop();
@@ -503,6 +597,8 @@ function stopBgm() {
   bgmNodes = [];
   if (audioContext) audioContext.close().catch(() => {});
   audioContext = null;
+  bgmController = null;
+  bgmMoodKey = "";
 }
 
 function toggleBgm() {
@@ -514,7 +610,9 @@ function toggleBgm() {
 }
 
 function startGame(reset = false) {
+  if (!reset && state.failed) return;
   if (reset) {
+    sceneTransitionId += 1;
     const audioEnabled = state.audioEnabled;
     state = freshState();
     state.audioEnabled = audioEnabled;
@@ -529,6 +627,11 @@ function startGame(reset = false) {
   saveState();
   render();
   startBgm();
+  if (state.pendingBiteSource) {
+    state.paused = true;
+    suspendBgm();
+    showBiteMark(false, state.pendingBiteSource);
+  }
 }
 
 function setActivity(message) {
@@ -574,7 +677,10 @@ function renderInventory() {
       </button>`;
   });
   const emptySlots = Math.max(0, 4 - cards.length);
-  container.innerHTML = cards.join("") + Array.from({ length: emptySlots }, () => `<div class="item empty" aria-hidden="true"><span class="item-icon">·</span></div>`).join("");
+  const markup = cards.join("") + Array.from({ length: emptySlots }, () => `<div class="item empty" aria-hidden="true"><span class="item-icon">·</span></div>`).join("");
+  if (markup === lastInventoryMarkup) return;
+  lastInventoryMarkup = markup;
+  container.innerHTML = markup;
 
   container.querySelectorAll("[data-item]").forEach((button) => {
     button.addEventListener("click", () => inspectItem(button.dataset.item));
@@ -603,6 +709,10 @@ function handleLayoutChange(event) {
 
 function renderHotspots() {
   const container = $("#hotspots");
+  const signature = JSON.stringify([state.scene, ...Object.values(state).filter((value) => typeof value === "boolean")]);
+  if (signature === lastHotspotSignature) return;
+  lastHotspotSignature = signature;
+  container.classList.toggle("expanded-routes", state.scene === "lobby" && state.virusTargetIdentified && !state.zombieSurgeActive);
   if (state.scene === "lobby") {
     container.innerHTML = `
       ${!state.letterRead ? `
@@ -758,7 +868,7 @@ function renderHotspots() {
 function renderScene() {
   const scene = scenes[state.scene];
   const image = $("#scene-image");
-  image.src = scene.image;
+  if (image.getAttribute("src") !== scene.image) image.src = scene.image;
   image.alt = scene.alt;
   $("#scene-number").textContent = scene.number;
   $("#scene-name").textContent = scene.name;
@@ -772,15 +882,21 @@ function render() {
   $("#activity").textContent = state.activity;
   $("#bite-pips").querySelectorAll("i").forEach((pip, index) => pip.classList.toggle("active", index < state.bites));
   updateSoundButton();
+  if (!state.paused && !state.failed) refreshBgmMood();
   renderScene();
   renderInventory();
   updateBarricadeCountdownDisplays();
 }
 
 function transitionTo(sceneName) {
+  const transitionId = ++sceneTransitionId;
   const sceneElement = $("#scene");
   sceneElement.classList.add("transitioning");
   window.setTimeout(() => {
+    if (transitionId !== sceneTransitionId || state.failed || state.paused) {
+      sceneElement.classList.remove("transitioning");
+      return;
+    }
     state.scene = sceneName;
     saveState();
     render();
@@ -800,7 +916,9 @@ function modalFrame({ code, title, body, close = true }) {
 }
 
 function showModal(html) {
+  $("#modal").classList.remove(...MODAL_STYLES);
   $("#modal-content").innerHTML = html;
+  $("#modal").scrollTop = 0;
   if (!$("#modal").open) $("#modal").showModal();
   const close = $("[data-close-modal]");
   if (close) close.addEventListener("click", closeModal);
@@ -808,7 +926,7 @@ function showModal(html) {
 
 function closeModal() {
   if ($("#modal").open) $("#modal").close();
-  $("#modal").classList.remove("terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal");
+  $("#modal").classList.remove(...MODAL_STYLES);
 }
 
 function inspectLetter(fromInventory = false) {
@@ -817,7 +935,7 @@ function inspectLetter(fromInventory = false) {
     addItem("graduate-letter");
     addItem("fluorescent-lamp");
     state.zombieDistance = Math.min(state.zombieDistance, 105);
-    setActivity("편지와 휴대용 형광등을 챙겼다. 편지 속 숫자가 호실을 가리키는 것 같다.");
+    setActivity("편지와 휴대용 형광등을 챙겼다.");
     saveState();
     render();
   }
@@ -832,10 +950,9 @@ function inspectLetter(fromInventory = false) {
         <p>오늘 오후, 등록되지 않은 냉각 상자 하나가 외부에서 반입됐습니다. 보관 기록을 확인하던 중 그 안의 바이러스가 신고된 검체와 다르다는 것을 알게 <span class="corrupt">되0ㅓ</span> 격리를 시도했습니다.</p>
         <p>하지만 누군가 격리 장치를 해제했고 감염이 건물 전체로 번졌습니다. 다만 <span class="corrupt">ㅇ1</span> 바이러스는 공기 중으로는 전파되지 않는 것 같습니다.</p>
         <p>반입자의 신원은 건물 기록 어딘가에 남아 있을 겁니다. 감염 직전, 아래층 컴퓨터실에 조사 기록의 위치를 숨겼습니다.<br />그 기록을 따라 검체 원본을 찾고 백신을 만들어 주세요.</p>
-        <p class="faded">컴퓨터실… 호수는 문장 속에… 더는 시간이…</p>
+        <p class="faded">컴퓨터실… 더는 시간이…</p>
       </div>
-      <button class="primary-button letter-action" type="button" data-follow-letter>${fromInventory ? "편지를 접는다" : "편지를 챙기고 복도로 간다"} <span>${fromInventory ? "×" : "→"}</span></button>
-      <div class="hint-row"><div class="hint-text" id="letter-hint">문장에 이상한 부분이 있다.</div><button class="hint-button" type="button" data-letter-hint>힌트 −01:00</button></div>`,
+      <button class="primary-button letter-action" type="button" data-follow-letter>${fromInventory ? "편지를 접는다" : "편지를 챙기고 복도로 간다"} <span>${fromInventory ? "×" : "→"}</span></button>`,
   }));
 
   $("[data-follow-letter]").addEventListener("click", () => {
@@ -843,26 +960,6 @@ function inspectLetter(fromInventory = false) {
     if (!fromInventory) transitionTo("hallway");
     saveState();
   });
-  $("[data-letter-hint]").addEventListener("click", revealLetterHint);
-}
-
-function revealLetterHint() {
-  const hints = [
-    "자연스럽지 않은 한글 조합 세 곳을 찾으세요.",
-    "한글 사이에 숫자가 섞여 있습니다.",
-    "위에서부터 숫자만 읽으면 1 · 0 · 1입니다.",
-  ];
-  const box = $("#letter-hint");
-  if (state.letterHints >= hints.length) {
-    box.textContent = "모든 힌트를 확인했습니다.";
-    return;
-  }
-  box.textContent = hints[state.letterHints];
-  state.letterHints += 1;
-  state.elapsed = Math.min(LIMIT_SECONDS, state.elapsed + 60);
-  setActivity(`${state.letterHints}단계 힌트를 확인해 1분이 지났습니다.`);
-  saveState();
-  render();
 }
 
 function chooseRoom(room) {
@@ -1014,15 +1111,14 @@ function runTerminalCommand(rawCommand) {
     return;
   }
 
-  addTerminalLine(`${command}: 명령을 찾을 수 없습니다. 'help'를 입력해 보세요.`, "error");
+  addTerminalLine(`${command}: 명령을 찾을 수 없습니다.`, "error");
 }
 
 function openComputerTerminal() {
   terminalLines = [
     { text: "CNU BIOSYSTEM TERMINAL · RECOVERY MODE", type: "system" },
     { text: `현재 컴퓨터의 경로는 ${state.terminalCwd}이다.`, type: "output" },
-    { text: "컴퓨터 저장소 어딘가에 다음 장소로 향하는 힌트가 있다 한다. 잘 찾아보자.", type: "output" },
-    { text: "목록을 확인하려면 ls를 입력하라. 사용 가능한 명령은 help에서 확인할 수 있다.", type: "hint" },
+    { text: "컴퓨터 저장소 어딘가에 다음 장소로 향하는 기록이 있다. 직접 찾아보자.", type: "output" },
   ];
   if (state.terminalSolved) {
     terminalLines.push({ text: "복구 완료: 다음 장소는 2층 자료열람실 B-17 비상 물자함이다.", type: "success" });
@@ -1036,11 +1132,10 @@ function openComputerTerminal() {
         <div class="terminal-output" id="terminal-output" aria-live="polite"></div>
         <form class="terminal-form" id="terminal-form" autocomplete="off">
           <label class="terminal-prompt" for="terminal-command">pc@cnu:<span id="terminal-current-path">${terminalPromptPath()}</span>$</label>
-          <input id="terminal-command" name="command" type="text" inputmode="text" autocapitalize="none" autocomplete="off" spellcheck="false" aria-label="터미널 명령어" placeholder="ls" />
+          <input id="terminal-command" name="command" type="text" inputmode="text" autocapitalize="none" autocomplete="off" spellcheck="false" aria-label="터미널 명령어" />
           <button type="submit">실행</button>
         </form>
       </div>
-      <div class="terminal-guide"><span>첫 명령어</span><code>ls</code><span>막히면</span><code>help</code></div>
       <button class="primary-button letter-action" id="terminal-finish" type="button" hidden>위치 단서를 챙긴다 <span>→</span></button>`,
   }));
   $("#modal").classList.add("terminal-modal");
@@ -1086,7 +1181,7 @@ function inspectLabEntrance() {
   transitionTo("animalResearchCenter");
   if (showStory) {
     window.setTimeout(() => {
-      if (state.scene === "animalResearchCenter") showAnimalCenterIntro();
+      if (state.scene === "animalResearchCenter" && !state.paused && !state.failed && !$("#modal").open) showAnimalCenterIntro();
     }, 380);
   }
 }
@@ -1137,9 +1232,9 @@ function microscopeFocusState() {
   if (objective === 40 && coarseError === 0 && fineError === 0) {
     return { blur: 0, scale, label: "세포막과 핵의 경계가 정확히 겹쳐 보인다.", ready: true };
   }
-  if (coarseError >= 2) return { blur, scale, label: "상이 크게 흐트러져 있다. 조동 나사로 표본 높이를 맞춰야 한다.", ready: false };
-  if (fineError > 0) return { blur, scale, label: "형태는 보이지만 경계가 겹쳐 보인다. 미동 나사를 조절해야 한다.", ready: false };
-  if (objective === 4) return { blur, scale, label: "표본 전체가 보인다. 관찰할 부위를 찾았다면 배율을 높여 보자.", ready: false };
+  if (coarseError >= 2) return { blur, scale, label: "상이 크게 흐트러져 있다.", ready: false };
+  if (fineError > 0) return { blur, scale, label: "형태는 보이지만 경계가 겹쳐 보인다.", ready: false };
+  if (objective === 4) return { blur, scale, label: "표본 전체가 보인다.", ready: false };
   if (objective === 10) return { blur, scale, label: "세포 무리가 보이지만 감염 흔적을 확인하기에는 배율이 부족하다.", ready: false };
   return { blur, scale, label: "렌즈 상태를 다시 확인하자.", ready: false };
 }
@@ -1183,7 +1278,7 @@ function microscopePuzzleBody() {
             <span><small>대물렌즈</small><b>${objective}×</b></span><i>=</i>
             <strong><small>총배율</small>${totalMagnification}×</strong>
           </div>
-          <p class="microscope-guide">낮은 배율에서 표본을 찾고, 대물렌즈를 돌려 배율을 높인 뒤 조동·미동 나사로 초점을 맞추자.</p>
+          <p class="microscope-guide">감염 흔적이 선명하게 보이도록 현미경을 조작하라.</p>
           <div class="objective-turret" role="group" aria-label="대물렌즈 선택">
             ${[4, 10, 40].map((power) => `
               <button class="objective-lens${objective === power ? " active" : ""}" type="button" data-objective="${power}" aria-pressed="${objective === power}">
@@ -1364,7 +1459,7 @@ function enterSecurityRoom() {
   transitionTo("securityRoom");
   if (!state.securityGuardResolved) {
     window.setTimeout(() => {
-      if (state.scene === "securityRoom" && !state.securityGuardResolved) showSecurityGuardEncounter();
+      if (state.scene === "securityRoom" && !state.securityGuardResolved && !state.paused && !state.failed && !$("#modal").open) showSecurityGuardEncounter();
     }, 380);
   }
 }
@@ -1452,7 +1547,7 @@ function cctvArchiveBody() {
       <div><span>CAM 04 · IDENTITY MATCH</span><strong>생정융 학생회장</strong><small>기업탐방 명단 · 학생회 완장 · 관리자 계정 일치</small></div>
       <b>MATCH 98%</b>
     </div>
-    <div class="cctv-recovery-rule"><small>BIO-ARCHIVE RECOVERY · BLAST</small><strong>냉각 상자에서 검출된 바이러스 서열과 가장 신뢰도 높게 일치하는 보관 샘플을 찾아라.</strong><p>Query cover와 Identity는 높을수록, E-value는 0에 가까울수록 신뢰도가 높다. Sample ID는 저온 보관함 번호와 같다.</p></div>
+    <div class="cctv-recovery-rule"><small>BIO-ARCHIVE RECOVERY · BLAST</small><strong>냉각 상자에서 검출된 바이러스 서열과 가장 신뢰도 높게 일치하는 보관 샘플을 찾아라.</strong></div>
     <div class="blast-query-card"><span>QUERY · OUTBREAK_SAMPLE</span><code>ATGGCCTTTGAACCTGGTTGCTAACGATCGTACGTA</code><small>Sequence preview: 36 / 1,284 bp · nucleotide BLAST</small></div>
     <div class="blast-results-wrap">
       <table class="blast-results" aria-label="바이러스 서열 BLAST 검색 결과">
@@ -1468,7 +1563,7 @@ function cctvArchiveBody() {
       <form class="answer-form cctv-answer-form" id="cctv-archive-form" autocomplete="off">
         <label for="cctv-archive-answer">가장 신뢰도 높은 Sample ID</label>
         <div><input id="cctv-archive-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="4" placeholder="? - ? ?" aria-describedby="cctv-archive-feedback" /><button type="submit">BLAST 확인</button></div>
-        <p id="cctv-archive-feedback" aria-live="polite">세 지표를 함께 비교해 가장 정확한 일치 결과를 찾자.</p>
+        <p id="cctv-archive-feedback" aria-live="polite">Sample ID를 입력하라.</p>
       </form>`}`;
 }
 
@@ -1502,7 +1597,7 @@ function checkCctvArchiveCode(event) {
     input.classList.remove("wrong");
     void input.offsetWidth;
     input.classList.add("wrong");
-    feedback.textContent = "서열 일치도가 부족하다. Query cover·Identity·E-value를 다시 비교하자.";
+    feedback.textContent = "인증 실패.";
     feedback.classList.add("error");
     input.select();
     if (navigator.vibrate) navigator.vibrate(100);
@@ -1528,7 +1623,7 @@ function enterColdStorage() {
   transitionTo("coldStorage");
   if (firstEntry) {
     window.setTimeout(() => {
-      if (state.scene !== "coldStorage" || state.c07LockerOpened) return;
+      if (state.scene !== "coldStorage" || state.c07LockerOpened || state.paused || state.failed || $("#modal").open) return;
       showModal(modalFrame({
         code: "LOCATION 08 · −80°C ARCHIVE",
         title: "C-07을 찾아라",
@@ -1703,7 +1798,9 @@ function checkC07MatchSolution() {
     feedback.classList.add("success");
     feedback.textContent = "10 ÷ 2 = 5 · C-07 잠금 해제";
     document.querySelectorAll("[data-match-id], [data-rotate-match], [data-reset-match], [data-check-match]").forEach((control) => { control.disabled = true; });
-    window.setTimeout(inspectC07Locker, 700);
+    window.setTimeout(() => {
+      if (state.scene === "coldStorage" && !state.paused && !state.failed && $("#c07-match-board")) inspectC07Locker();
+    }, 700);
     return;
   }
 
@@ -1854,7 +1951,7 @@ function enterBioinformaticsLab() {
   transitionTo("bioinformaticsLab");
   if (firstEntry) {
     window.setTimeout(() => {
-      if (state.scene !== "bioinformaticsLab" || state.virusTargetIdentified) return;
+      if (state.scene !== "bioinformaticsLab" || state.virusTargetIdentified || state.paused || state.failed || $("#modal").open) return;
       showModal(modalFrame({
         code: "LOCATION 09 · GENOME ANALYSIS",
         title: "바이러스 원본 확보",
@@ -1895,7 +1992,6 @@ function sequenceRepairBody() {
   return `
     <div class="genome-console-header"><span>▦</span><div><small>C-07 ORIGINAL GENOME · 61% RECOVERED</small><strong>훼손된 이중가닥 DNA 복원</strong></div><b>STEP 1 / 2</b></div>
     <div class="genome-stage-progress"><i class="active"></i><i></i><span>DNA 복원</span><span>단백질 번역</span></div>
-    <div class="base-pair-rule compact" aria-label="DNA 상보적 염기쌍 규칙"><span><b class="base base-a">A</b> ↔ <b class="base base-t">T</b></span><span><b class="base base-g">G</b> ↔ <b class="base base-c">C</b></span></div>
     <p class="sequence-guide">아래쪽 주형 가닥을 이용해 위쪽 암호화 가닥의 <strong>물음표 다섯 곳</strong>을 복원하라.</p>
     <div class="sequence-pair-board">${renderRepairCodons()}</div>
     <div class="sequence-base-picker" aria-label="복원할 DNA 염기 선택">
@@ -1903,7 +1999,7 @@ function sequenceRepairBody() {
       <div>${["A", "T", "G", "C"].map((base) => `<button class="base-choice base-${base.toLowerCase()}" type="button" data-sequence-base="${base}">${base}</button>`).join("")}</div>
     </div>
     <button class="primary-button sequence-run-button" type="button" data-check-sequence-repair>복원 서열 검증 <span>→</span></button>
-    <p class="sequence-feedback" id="sequence-repair-feedback" aria-live="polite">DNA에서는 A–T, G–C가 서로 마주 본다.</p>`;
+    <p class="sequence-feedback" id="sequence-repair-feedback" aria-live="polite"></p>`;
 }
 
 function sequenceTranslationBody() {
@@ -1929,7 +2025,7 @@ function sequenceTranslationBody() {
     <form class="answer-form target-protein-form" id="target-protein-form" autocomplete="off">
       <label for="target-protein-answer">표적 단백질 식별 코드 · 5 LETTERS</label>
       <div><input id="target-protein-answer" name="answer" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="5" placeholder="?????" aria-describedby="target-protein-feedback" /><button type="submit">분석</button></div>
-      <p id="target-protein-feedback" aria-live="polite">코돈표는 순서가 섞여 있다. mRNA 순서대로 찾은 뒤 각 아미노산의 표준 1-letter code를 직접 변환하자.</p>
+      <p id="target-protein-feedback" aria-live="polite"></p>
     </form>`;
 }
 
@@ -1985,12 +2081,8 @@ function checkSequenceRepair() {
   if (!correct) {
     state.sequencePuzzleFailures += 1;
     saveState();
-    document.querySelectorAll("[data-sequence-gap]").forEach((button) => {
-      const index = Number(button.dataset.sequenceGap);
-      button.classList.toggle("wrong", Boolean(state.sequenceRepairBases[index]) && state.sequenceRepairBases[index] !== expected[index]);
-    });
     feedback.classList.add("error");
-    feedback.textContent = complete ? "상보적이지 않은 염기가 남아 있다. 각 세로 위치를 다시 비교하자." : "아직 복원하지 않은 염기가 있다.";
+    feedback.textContent = complete ? "복원 서열 불일치." : "입력되지 않은 염기가 있다.";
     if (navigator.vibrate) navigator.vibrate(100);
     return;
   }
@@ -2012,7 +2104,7 @@ function checkTargetProteinAnswer(event) {
     void input.offsetWidth;
     input.classList.add("wrong");
     feedback.classList.add("error");
-    feedback.textContent = "번역 결과가 데이터베이스 표적과 일치하지 않는다. mRNA 코돈의 순서를 다시 확인하자.";
+    feedback.textContent = "표적 단백질 식별 실패.";
     input.select();
     if (navigator.vibrate) navigator.vibrate(100);
     return;
@@ -2088,7 +2180,7 @@ function enterMaterialLab(sceneName, enteredKey, activity, intro) {
   transitionTo(sceneName);
   if (firstEntry) {
     window.setTimeout(() => {
-      if (state.scene !== sceneName) return;
+      if (state.scene !== sceneName || state.paused || state.failed || $("#modal").open) return;
       showModal(modalFrame(intro));
       $("#modal").classList.add("evidence-modal", "materials-modal");
     }, 380);
@@ -2148,8 +2240,7 @@ function openPrimerPuzzle() {
     code: "PCR DESIGN · ZV-SPIKE",
     title: "프라이머 방향을 맞춰라",
     body: `
-      <div class="primer-target-map"><small>TARGET REGION · CODING STRAND</small><div><code>5′—GCTACG</code><strong>ZV-SPIKE</strong><code>TTACGA—3′</code></div><span>두 프라이머의 3′ 말단이 표적을 향해야 증폭할 수 있다.</span></div>
-      <div class="primer-rule"><span>→</span><p><strong>Forward primer</strong><br />왼쪽 암호화 가닥과 같은 서열</p><span>←</span><p><strong>Reverse primer</strong><br />오른쪽 서열의 역상보 서열</p></div>
+      <div class="primer-target-map"><small>TARGET REGION · CODING STRAND</small><div><code>5′—GCTACG</code><strong>ZV-SPIKE</strong><code>TTACGA—3′</code></div></div>
       <div class="primer-choice-grid">
         <section><h3>FORWARD · 5′ → 3′</h3>${primerChoiceButton("forward", "GCTACG", "후보 A")}${primerChoiceButton("forward", "CGATGC", "후보 B")}${primerChoiceButton("forward", "TTACGA", "후보 C")}</section>
         <section><h3>REVERSE · 5′ → 3′</h3>${primerChoiceButton("reverse", "AATGCT", "후보 A")}${primerChoiceButton("reverse", "TCGTAA", "후보 B")}${primerChoiceButton("reverse", "TTACGA", "후보 C")}</section>
@@ -2174,7 +2265,50 @@ function selectPrimer(role, value) {
   }
 }
 
+function registerMaterialPuzzleFailure(kind, feedback) {
+  const configs = {
+    primer: {
+      failures: "primerPuzzleFailures",
+      bitten: "primerPuzzleBiteTriggered",
+      attack: "primer-puzzle",
+      activity: "분자생물학실 문밖에서 좀비의 발소리가 가까워진다.",
+    },
+    culture: {
+      failures: "culturePuzzleFailures",
+      bitten: "culturePuzzleBiteTriggered",
+      attack: "culture-puzzle",
+      activity: "세포배양실 유리문 너머로 좀비의 그림자가 가까워진다.",
+    },
+    antibody: {
+      failures: "antibodyPuzzleFailures",
+      bitten: "antibodyPuzzleBiteTriggered",
+      attack: "antibody-puzzle",
+      activity: "시약보관실 바깥에서 좀비가 냉장고 문을 두드리기 시작한다.",
+    },
+  };
+  const config = configs[kind];
+  state[config.failures] += 1;
+  state.zombieDistance = Math.max(0, state.zombieDistance - 18);
+  setActivity(config.activity);
+  saveState();
+  render();
+  if (navigator.vibrate) navigator.vibrate([80, 50, 120]);
+
+  if (state[config.failures] >= 2 && !state[config.bitten]) {
+    state[config.bitten] = true;
+    saveState();
+    triggerZombieAttack(config.attack);
+    return true;
+  }
+  feedback.classList.add("error");
+  feedback.textContent = state[config.bitten]
+    ? "오답이다."
+    : "오답이다. 가까워진 발소리가 문 바로 밖에서 멈췄다. 한 번 더 틀리면 따라잡힌다.";
+  return false;
+}
+
 function checkPrimerPuzzle() {
+  if (state.paused || state.failed || state.primerCollected) return;
   const feedback = $("#primer-feedback");
   if (!state.primerForwardSelection || !state.primerReverseSelection) {
     feedback.classList.add("error");
@@ -2182,9 +2316,7 @@ function checkPrimerPuzzle() {
     return;
   }
   if (state.primerForwardSelection !== "GCTACG" || state.primerReverseSelection !== "TCGTAA") {
-    feedback.classList.add("error");
-    feedback.textContent = "증폭 방향이 표적 바깥을 향한다. Reverse primer는 오른쪽 서열을 역상보로 읽어야 한다.";
-    if (navigator.vibrate) navigator.vibrate(100);
+    registerMaterialPuzzleFailure("primer", feedback);
     return;
   }
   state.primerCollected = true;
@@ -2211,19 +2343,18 @@ function openCulturePuzzle() {
       <div class="culture-requirement"><span>◉</span><div><small>ANTIGEN EXPRESSION CONDITION</small><strong>부착 상태 양호 · 오염 없음 · Confluency 70–80%</strong></div></div>
       <p class="sequence-guide">관찰 기록과 세포 밀도를 비교해 바로 사용할 수 있는 배양 접시 하나를 선택하자.</p>
       <div class="culture-dish-grid">${cultures.map(([id, density, note, visual]) => `<button class="culture-dish-card ${visual}" type="button" data-culture-id="${id}"><span class="culture-dish" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><strong>${id}</strong><small>Confluency ${density}</small><em>${note}</em></button>`).join("")}</div>
-      <p class="material-feedback" id="culture-feedback" aria-live="polite">과밀하거나 오염된 세포는 항원 발현 결과를 망칠 수 있다.</p>`,
+      <p class="material-feedback" id="culture-feedback" aria-live="polite">배양 접시를 선택하라.</p>`,
   }));
   $("#modal").classList.add("evidence-modal", "materials-modal");
   document.querySelectorAll("[data-culture-id]").forEach((button) => button.addEventListener("click", () => checkCultureDish(button.dataset.cultureId)));
 }
 
 function checkCultureDish(id) {
+  if (state.paused || state.failed || state.cultureCellsCollected) return;
   const feedback = $("#culture-feedback");
   if (id !== "B-12") {
-    feedback.classList.add("error");
-    feedback.textContent = id === "A-03" ? "세포 밀도가 너무 낮아 항원 생산량을 확보하기 어렵다." : id === "C-04" ? "과밀 배양으로 세포 상태가 무너지고 있다." : "배지의 부유 입자는 미생물 오염 징후다.";
     document.querySelectorAll("[data-culture-id]").forEach((button) => button.classList.toggle("wrong", button.dataset.cultureId === id));
-    if (navigator.vibrate) navigator.vibrate(100);
+    registerMaterialPuzzleFailure("culture", feedback);
     return;
   }
   state.cultureCellsCollected = true;
@@ -2249,19 +2380,18 @@ function openAntibodyPuzzle() {
     body: `
       <div class="antibody-requirement"><span>Y</span><div><small>VALIDATION STANDARD</small><strong>ZV-SPIKE 수용체 결합부위 특이적 IgG</strong><p>2–8°C 보관 · 동결 이력 없음 · 침전 없음</p></div></div>
       <div class="antibody-vial-grid">${vials.map(([id, target, condition]) => `<button type="button" data-antibody-id="${id}"><span class="vial-visual" aria-hidden="true"><i></i><b>${id}</b></span><div><strong>${target}</strong><small>${condition}</small></div></button>`).join("")}</div>
-      <p class="material-feedback" id="antibody-feedback" aria-live="polite">표적, 항체 종류, 보관 상태를 모두 확인하자.</p>`,
+      <p class="material-feedback" id="antibody-feedback" aria-live="polite">항체 바이알을 선택하라.</p>`,
   }));
   $("#modal").classList.add("evidence-modal", "materials-modal");
   document.querySelectorAll("[data-antibody-id]").forEach((button) => button.addEventListener("click", () => checkAntibodyVial(button.dataset.antibodyId)));
 }
 
 function checkAntibodyVial(id) {
+  if (state.paused || state.failed || state.antibodyCollected) return;
   const feedback = $("#antibody-feedback");
   if (id !== "R-04") {
-    feedback.classList.add("error");
-    feedback.textContent = id === "R-11" ? "이 항체는 바이러스 내부 단백질을 인식해 세포 침투를 막을 수 없다." : id === "F-02" ? "반복 동결·해동으로 항체가 변성됐을 가능성이 높다." : "침전이 생긴 IgM 시약은 표준물질로 사용할 수 없다.";
     document.querySelectorAll("[data-antibody-id]").forEach((button) => button.classList.toggle("wrong", button.dataset.antibodyId === id));
-    if (navigator.vibrate) navigator.vibrate(100);
+    registerMaterialPuzzleFailure("antibody", feedback);
     return;
   }
   state.antibodyCollected = true;
@@ -2400,7 +2530,7 @@ function openShelfPuzzle() {
         <form class="answer-form" id="shelf-puzzle-form" autocomplete="off">
           <label for="shelf-puzzle-answer">빈칸에 들어갈 숫자</label>
           <div><input id="shelf-puzzle-answer" name="answer" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="?" aria-describedby="shelf-puzzle-feedback" /><button type="submit">확인</button></div>
-          <p id="shelf-puzzle-feedback" aria-live="polite">숫자의 규칙을 찾아 입력하자.</p>
+          <p id="shelf-puzzle-feedback" aria-live="polite">빈칸의 숫자를 입력하라.</p>
         </form>`}`,
   }));
   $("#modal").classList.add("evidence-modal");
@@ -2416,7 +2546,7 @@ function checkShelfPuzzleAnswer(event) {
   const input = $("#shelf-puzzle-answer");
   const feedback = $("#shelf-puzzle-feedback");
   if (input.value.trim() !== "25") {
-    feedback.textContent = "잠금이 해제되지 않는다. 규칙을 다시 살펴보자.";
+    feedback.textContent = "정답이 아니다.";
     feedback.classList.add("error");
     input.classList.add("wrong");
     input.select();
@@ -2477,7 +2607,6 @@ function researchJournalBody() {
   return `
     <div class="uv-journal">
       <header><span>UV REVEAL · ACCESS KEY</span><strong>형광 잉크로 숨겨진 기록</strong></header>
-      <div class="base-pair-rule" aria-label="DNA 상보적 염기쌍 규칙"><span><b class="base base-a">A</b> ↔ <b class="base base-t">T</b></span><span><b class="base base-g">G</b> ↔ <b class="base base-c">C</b></span></div>
       <p class="uv-puzzle-guide">각 조각에서 <strong>서로 정상적으로 결합할 수 없는 염기쌍의 개수</strong>를 세고, 01부터 차례대로 입력하라.</p>
       <div class="dna-sample-grid">
         ${samples.map((sample) => `
@@ -2495,7 +2624,7 @@ function researchJournalBody() {
         <form class="answer-form journal-answer-form" id="journal-puzzle-form" autocomplete="off">
           <label for="journal-puzzle-answer">FRAGMENT 01 → 04 · 4자리 코드</label>
           <div><input id="journal-puzzle-answer" name="answer" type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" placeholder="0000" aria-describedby="journal-puzzle-feedback" /><button type="submit">확인</button></div>
-          <p id="journal-puzzle-feedback" aria-live="polite">각 세로 열의 두 염기가 상보적인지 확인하자.</p>
+          <p id="journal-puzzle-feedback" aria-live="polite">4자리 코드를 입력하라.</p>
         </form>`}
     </div>`;
 }
@@ -2535,7 +2664,7 @@ function checkJournalPuzzleAnswer(event) {
     input.classList.remove("wrong");
     void input.offsetWidth;
     input.classList.add("wrong");
-    feedback.textContent = "코드가 반응하지 않는다. 불일치 염기쌍의 개수를 다시 세어 보자.";
+    feedback.textContent = "정답이 아니다.";
     feedback.classList.add("error");
     input.select();
     if (navigator.vibrate) navigator.vibrate(100);
@@ -2674,7 +2803,7 @@ function showFailure() {
     code: "GAME OVER · TIME EXPIRED",
     title: "감염 확산",
     close: false,
-    body: `<p class="result-copy">제한 시간 안에 백신 제작에 필요한 바이러스 원본을 확보하지 못했다.<br />좀비 바이러스가 생명대 전체로 퍼졌다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
+    body: `<p class="result-copy">제한 시간이 끝났다.<br />건물의 마지막 격리 구역까지 감염체가 들어왔다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
   }));
   $("[data-restart]").addEventListener("click", () => {
     closeModal();
@@ -2683,6 +2812,7 @@ function showFailure() {
 }
 
 function triggerZombieAttack(source = "distance") {
+  if (state.failed || state.paused) return;
   const attackDetails = {
     "wrong-room": {
       code: "WRONG ROOM",
@@ -2709,6 +2839,18 @@ function triggerZombieAttack(source = "distance") {
       activity: "C-07 잠금 장치의 경고음이 울렸고, 뒤에서 다가온 좀비에게 물렸다.",
       copy: "두 번째 오답과 함께 냉동고 경고음이 울렸다. 뒤를 돌아보는 순간 좀비에게 어깨를 물렸다.",
     },
+    "primer-puzzle": {
+      code: "MOLECULAR LAB AMBUSH",
+      activity: "프라이머 선택을 두 번 틀리는 사이 분자생물학실로 들어온 좀비에게 물렸다.",
+    },
+    "culture-puzzle": {
+      code: "CULTURE LAB AMBUSH",
+      activity: "배양세포 선택을 두 번 틀리는 사이 세포배양실로 들어온 좀비에게 물렸다.",
+    },
+    "antibody-puzzle": {
+      code: "REAGENT ROOM AMBUSH",
+      activity: "항체 선택을 두 번 틀리는 사이 시약보관실로 들어온 좀비에게 물렸다.",
+    },
     distance: {
       code: "ATTACK",
       activity: "좀비 무리와의 거리가 0m가 되어 공격당했다.",
@@ -2716,6 +2858,7 @@ function triggerZombieAttack(source = "distance") {
     },
   };
   const detail = attackDetails[source] || attackDetails.distance;
+  state.pendingBiteSource = source;
   state.bites += 1;
   state.zombieDistance = source === "wrong-room"
     ? Math.max(58, 74 - state.wrongDoorCount * 5)
@@ -2723,6 +2866,8 @@ function triggerZombieAttack(source = "distance") {
       ? 8
       : source === "c07-puzzle"
         ? Math.min(state.zombieDistance, 32)
+      : ["primer-puzzle", "culture-puzzle", "antibody-puzzle"].includes(source)
+        ? Math.min(state.zombieDistance, 24)
       : 60;
   state.paused = true;
   suspendBgm();
@@ -2732,30 +2877,53 @@ function triggerZombieAttack(source = "distance") {
 
   if (state.bites >= 3) {
     state.failed = true;
-    showModal(modalFrame({
-      code: "GAME OVER · INFECTED",
-      title: "감염 완료",
-      close: false,
-      body: `<p class="result-copy">세 번째 물림이다. 바이러스가 전신으로 퍼지기 시작했다.<br />백신을 만들 기회는 사라졌다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
-    }));
-    $("[data-restart]").addEventListener("click", () => {
-      closeModal();
-      startGame(true);
-    });
+    saveState();
+    showBiteMark(true, source);
     return;
   }
 
-  showModal(modalFrame({
-    code: `${detail.code} · BITE ${state.bites}/3`,
-    title: "좀비에게 물렸다",
-    close: false,
-    body: `<div class="result-mark danger-mark">${state.bites}</div><p class="result-copy">${detail.copy}<br />세 번 물리면 감염된다. 서둘러 이동해야 한다.</p><button class="primary-button letter-action" type="button" data-survive>계속 움직인다</button>`,
-  }));
+  showBiteMark(false, source);
+}
+
+function showBiteMark(finalBite, source) {
+  showModal(`
+    <article class="bite-visual-panel">
+      <img src="assets/images/non-graphic-bite-mark.jpg" alt="팔에 남은 붉은 물림 자국" />
+      <div class="bite-photo-shade" aria-hidden="true"></div>
+      <div class="bite-visual-pips" aria-label="물림 ${state.bites}회"><i class="active"></i><i class="${state.bites >= 2 ? "active" : ""}"></i><i class="${state.bites >= 3 ? "active" : ""}"></i></div>
+      <button class="bite-visual-continue" type="button" ${finalBite ? "data-bite-terminal" : "data-survive"} aria-label="${finalBite ? "감염 결과 확인" : "계속 움직인다"}"><span aria-hidden="true">${finalBite ? "×" : "→"}</span></button>
+    </article>`);
+  $("#modal").classList.add("bite-modal");
+  if (finalBite) {
+    $("[data-bite-terminal]").addEventListener("click", showInfectionFailure);
+    return;
+  }
   $("[data-survive]").addEventListener("click", () => {
     state.paused = false;
+    state.pendingBiteSource = null;
     closeModal();
     saveState();
     startBgm();
+    const retry = {
+      "primer-puzzle": openPrimerPuzzle,
+      "culture-puzzle": openCulturePuzzle,
+      "antibody-puzzle": openAntibodyPuzzle,
+    }[source];
+    if (retry) retry();
+  });
+}
+
+function showInfectionFailure() {
+  showModal(modalFrame({
+    code: "GAME OVER · INFECTED",
+    title: "감염 완료",
+    close: false,
+    body: `<p class="result-copy">세 번째 물림으로 감염이 진행됐다.<br />백신을 만들 기회는 사라졌다.</p><button class="primary-button letter-action" type="button" data-restart>처음부터 다시 시작</button>`,
+  }));
+  $("#modal").classList.remove("bite-modal");
+  $("[data-restart]").addEventListener("click", () => {
+    closeModal();
+    startGame(true);
   });
 }
 
@@ -2813,10 +2981,19 @@ $("#inventory-toggle").addEventListener("click", toggleInventoryPanel);
 $("#modal").addEventListener("click", (event) => {
   if (event.target === $("#modal") && $("#modal [data-close-modal]")) closeModal();
 });
+$("#modal").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  if ($("#modal [data-close-modal]")) closeModal();
+});
 
 window.setInterval(() => {
-  if (!state.started || state.paused || state.failed) return;
+  if (!state.started || state.paused || state.failed || $("#game").hidden) return;
   state.elapsed += 1;
+  if (state.elapsed >= LIMIT_SECONDS) {
+    render();
+    showFailure();
+    return;
+  }
   if (state.elapsed > 0 && state.elapsed % 90 === 0) {
     state.zombieDistance = Math.max(0, state.zombieDistance - 4);
   }
@@ -2832,7 +3009,6 @@ window.setInterval(() => {
     triggerZombieAttack();
     return;
   }
-  if (state.elapsed >= LIMIT_SECONDS) showFailure();
 }, 1000);
 
 function registerWebMCP() {
