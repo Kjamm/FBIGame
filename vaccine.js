@@ -158,6 +158,7 @@ function failVaccinePuzzle() {
 
 function showVaccineValidation() {
   if (!state.vaccineValidated) return;
+  if (state.handoffDelivered.includes("vaccine-candidate")) { showTransferredValidation(); return; }
   showModal(modalFrame({ code: "CANDIDATE SECURED · V-03", title: "마지막 실험의 결과", body: `<div class="candidate-detail validated">${candidateResultCard(vaccineCandidates[2])}</div><p class="result-copy">보고서의 표적과 일치하며, 세포 생존율을 유지하면서 유입률을 낮춘 후보를 확보했다. 검증 기록도 인벤토리에 보관했다.</p><p class="handling-copy">응급 연구 후보다. 효과가 확정된 치료제나 투여 가능한 완제품을 뜻하지 않는다.</p><div class="signal-notice"><small>INTERNAL NETWORK · SIGNAL DETECTED</small><strong>…들리나요? 아직… 여기 사람이…</strong><p>장비의 내부 통신 연결이 복구되자 끊어진 목소리가 들어온다.</p></div><button class="primary-button material-check-button" type="button" data-open-survivor-signal>수신 신호 확인 <span>→</span></button>` }));
   $("#modal").classList.add("evidence-modal", "exploration-modal", "vaccine-modal");
   $("[data-open-survivor-signal]").addEventListener("click", openSurvivorSignal);

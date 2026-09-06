@@ -25,6 +25,7 @@ function normalizeRescueState() {
     state.rescueRequestElapsed = Number.isFinite(state.rescueRequestElapsed) ? Math.max(0, Math.min(state.elapsed, state.rescueRequestElapsed)) : state.elapsed;
     addItem("rescue-transmission-receipt");
   } else state.rescueRequestElapsed = null;
+  normalizeRescueRouteState();
 }
 
 function prepareRescueDefense() {
@@ -42,12 +43,12 @@ function prepareRescueDefense() {
 
 function decorateRescueHotspots(container) {
   container.classList.add("rescue-lobby-hotspots");
-  container.insertAdjacentHTML("beforeend", `<button type="button" class="hotspot rescue-power-hotspot${state.rescueLinkEstablished ? " completed" : ""}" data-action="inspect-rescue-power"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">비상 배전반</span></button><button type="button" class="hotspot rescue-radio-hotspot${state.rescueRequestSent ? " completed" : ""}" data-action="inspect-rescue-radio"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">${state.rescueRequestSent ? "수신 확인서" : "비상 송신기"}</span></button><button type="button" class="hotspot final-barricade-hotspot danger-marker" data-action="inspect-final-barricade"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">버티는 바리케이드</span></button>`);
+  container.insertAdjacentHTML("beforeend", `<button type="button" class="hotspot rescue-power-hotspot${state.rescueLinkEstablished ? " completed" : ""}" data-action="inspect-rescue-power"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">비상 배전반</span></button><button type="button" class="hotspot rescue-radio-hotspot" data-action="inspect-rescue-radio"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">${state.rescueRouteSecured ? (state.handoffComplete ? "구조대 · 마지막 대피" : "구조대 · 후보·증거 인계") : state.rescueRequestSent ? "구조 경로 단말기" : "비상 송신기"}</span></button><button type="button" class="hotspot final-barricade-hotspot danger-marker" data-action="inspect-final-barricade"><span class="pulse" aria-hidden="true"></span><span class="hotspot-label">버티는 바리케이드</span></button>`);
 }
 
 function inspectFinalBarricade() {
   if (!state.rescueDefenseStarted || state.scene !== "lobby" || state.paused || state.failed) return;
-  showModal(modalFrame({ code: "BARRICADE · HOLDING", title: "아직 버티고 있다", body: `<div class="defense-detail"><img src="assets/images/cnu-lobby-final-defense.jpg" alt="복도 입구를 막고 있는 접이식 바리케이드" /></div><p class="result-copy">경첩은 휘었지만 지지대가 바닥을 붙잡고 있다. 우리가 설치했던 바리케이드다. 친구들이 벌어진 틈을 다시 막는다.</p><p class="result-copy">${state.rescueRequestSent ? "구조대는 위치를 확인했다. 아직 도착한 것은 아니다. 문을 임의로 열지 않고 지시를 기다린다." : "배전반과 송신기를 조작할 동안 이곳이 마지막 방어선이다."}</p>` }));
+  showModal(modalFrame({ code: "BARRICADE · HOLDING", title: "아직 버티고 있다", body: `<div class="defense-detail"><img src="assets/images/cnu-lobby-final-defense.jpg" alt="복도 입구를 막고 있는 접이식 바리케이드" /></div><p class="result-copy">경첩은 휘었지만 지지대가 바닥을 붙잡고 있다. 우리가 설치했던 바리케이드다. 친구들이 벌어진 틈을 다시 막는다.</p><p class="result-copy">${state.rescueRouteSecured ? "구조대가 로비에 합류해 방어를 맡았다. 정문 바리케이드는 계속 유지한다." : state.rescueRouteStarted ? "구조대는 건물 외곽에서 대기 중이다. 정문 방어를 유지하며 보조 진입로를 확보해야 한다." : state.rescueRequestSent ? "구조대는 위치를 확인했다. 아직 도착한 것은 아니다. 문을 임의로 열지 않고 지시를 기다린다." : "배전반과 송신기를 조작할 동안 이곳이 마지막 방어선이다."}</p>` }));
   $("#modal").classList.add("evidence-modal", "exploration-modal", "rescue-modal");
 }
 
@@ -130,7 +131,13 @@ function failRescuePower() {
 
 function openRescueRadio() {
   if (!rescuePanelAvailable()) return;
-  if (state.rescueRequestSent) { showRescueReceipt(); return; }
+  if (state.handoffComplete) { startEnding(); return; }
+  if (state.rescueRouteSecured) { startHandoff(); return; }
+  if (state.rescueRequestSent) {
+    if (state.rescueRouteStarted) openRescueRoute();
+    else showRescueReceipt();
+    return;
+  }
   if (!state.rescueLinkEstablished) {
     showModal(modalFrame({ code: "EMERGENCY RADIO · OFFLINE", title: "응답 없는 송신기", body: '<p class="result-copy">독립 송신 회선은 살아 있지만 안테나와 전원이 준비되지 않았다. 비상 배전반을 확인해야 한다.</p><button class="primary-button material-check-button" type="button" data-radio-power>배전반 확인</button>' }));
     $("[data-radio-power]").addEventListener("click", openRescuePowerPanel);
@@ -164,6 +171,10 @@ function sendRescueRequest() {
 
 function showRescueReceipt() {
   if (!state.rescueRequestSent || state.failed || state.paused) return;
-  showModal(modalFrame({ code: "RESCUE REQUEST · RECEIVED", title: "구조 요청이 전달됐다", body: `<div class="rescue-receipt"><small>LOCAL SIMULATION · 수신 확인</small><strong>검증 자료 + 생존자 위치 수신 완료</strong><dl><div><dt>후보</dt><dd>V-03 · ZV-SPIKE 검증 기록</dd></div><div><dt>발신팀</dt><dd>1층 로비 · 바리케이드 안쪽</dd></div><div><dt>추가 생존자</dt><dd>3층 비상 격리실 · 학생회장</dd></div><div><dt>후보 보관</dt><dd>냉장 전원 유지</dd></div><div><dt>요청 시점</dt><dd>게임 경과 ${formatElapsed(state.rescueRequestElapsed)}</dd></div></dl></div><div class="survivor-terminal"><small>구조 지휘팀</small><p>“자료와 위치 확인했습니다. 의료진과 함께 접근 경로를 확보하겠습니다. 후보와 원본 기록을 보존하고, 생존자 상태를 확인하기 전에는 격리실 문을 열지 마세요.”</p></div><p class="result-copy">바깥에서 누군가 우리 위치를 알고 있다. 하지만 아직 구조대가 도착한 것은 아니다. 우리는 바리케이드 안쪽에서 다음 지시를 기다린다.</p><div class="vaccine-access"><strong>이번 구간 완료 · 구조 요청 수신</strong><p>현재 구간의 시간·추격 진행을 멈췄습니다. 구조대 도착과 후보 인계·배포 이야기는 다음 단계에서 이어집니다.</p></div>` }));
+  showModal(modalFrame({ code: "RESCUE REQUEST · RECEIVED", title: "구조 요청이 전달됐다", body: `<div class="rescue-receipt"><small>LOCAL SIMULATION · 수신 확인</small><strong>검증 자료 + 생존자 위치 수신 완료</strong><dl><div><dt>후보</dt><dd>V-03 · ZV-SPIKE 검증 기록</dd></div><div><dt>발신팀</dt><dd>1층 로비 · 바리케이드 안쪽</dd></div><div><dt>추가 생존자</dt><dd>3층 비상 격리실 · 학생회장</dd></div><div><dt>후보 보관</dt><dd>냉장 전원 유지</dd></div><div><dt>요청 시점</dt><dd>게임 경과 ${formatElapsed(state.rescueRequestElapsed)}</dd></div></dl></div><div class="survivor-terminal"><small>구조 지휘팀 · 수신 당시 교신 기록</small><p>“자료와 위치 확인했습니다. 의료진과 함께 접근 경로를 확보하겠습니다. 후보와 원본 기록을 보존하고, 생존자 상태를 확인하기 전에는 격리실 문을 열지 마세요.”</p></div><div class="vaccine-access"><strong>${state.rescueRouteSecured ? "구조대 로비 합류 완료" : state.rescueRouteStarted ? "구조 경로 확보 진행 중" : "다음 단계 · 구조 경로 확보"}</strong><p>${state.rescueRouteSecured ? "진입 기록에서 합류 상황을 확인할 수 있다." : state.rescueRouteStarted ? "CCTV와 도면을 대조해 구조대가 들어올 길을 확보하자. 시간과 추격은 진행 중이다." : "구조대의 다음 교신을 확인하면 경로 확보 단계가 시작되고 시간과 추격이 다시 진행된다."}</p></div><button type="button" class="primary-button material-check-button" data-rescue-route-continue>${state.scene !== "lobby" ? "로비의 구조 경로 단말기로 돌아간다" : state.rescueRouteSecured ? "구조대 진입 기록 확인" : state.rescueRouteStarted ? "구조 경로 확보 이어하기" : "구조대의 다음 교신 확인"} <span>→</span></button>` }));
   $("#modal").classList.add("evidence-modal", "exploration-modal", "rescue-modal");
+  $("[data-rescue-route-continue]").addEventListener("click", () => {
+    if (state.scene !== "lobby") goToLobby();
+    else startRescueRoute();
+  });
 }

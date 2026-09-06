@@ -46,6 +46,7 @@ function canAccessIsolationRoom() {
 }
 
 function survivorSignalBody() {
+  if (state.presidentRescued) return `<div class="survivor-terminal"><small>최초 호출 기록 · 현재 상태 갱신</small><strong>학생회장 · 보호 이송 완료</strong><p>3층 격리실에서 보냈던 최초 호출의 기록이다. 현재는 의료진의 관찰 아래 로비 보호 구역으로 이동했다.</p></div><button type="button" class="primary-button material-check-button" data-signal-return-lobby>로비로 돌아간다 <span>→</span></button>`;
   return `<div class="survivor-terminal"><span class="signal-bars" aria-hidden="true">▂ ▄ ▆ ▃ ▅</span><small>수신 위치</small><strong>3F · 비상 격리실</strong><p>“…복도에 있나요? 문이 안 열려요.”</p><p>“나 혼자… 여기 남아 있어요. 제발…”</p><span>${state.presidentConfronted ? "발신자 확인 · 생정융 학생회장 / 최초 수신 기록" : "발신자 미확인 · 연결 불안정"}</span></div><p class="result-copy">${state.presidentConfronted ? "처음에는 알아듣지 못했던 목소리. 유리문 너머에서 만난 학생회장의 호출이었다." : "낯익은 목소리 같지만 잡음 때문에 확신할 수 없다. 수신 위치를 지도에 기록했다."}</p><div class="vaccine-access"><small>이동 가능 · 3층</small><strong>비상 격리실</strong><p>로비의 층별 안내판에서 격리실 관찰 구역으로 이동할 수 있다.</p></div><button class="primary-button material-check-button" type="button" data-signal-return-lobby>로비 안내판으로 돌아간다 <span>→</span></button>`;
 }
 
@@ -69,6 +70,7 @@ function normalizeIsolationState() {
 
 function enterIsolationRoom() {
   if (!canAccessIsolationRoom() || state.paused || state.failed) return;
+  if (state.presidentRescued) { showPresidentTransferRecord(); return; }
   enterMaterialLab("emergencyIsolationRoom", "isolationRoomEntered", "비상 격리실의 관찰 구역에 도착했다. 유리문 너머에서 붉은 완장의 사람이 고개를 든다.", {
     code: "SURVIVOR LOCATED · 3F", title: "유리문 너머의 얼굴",
     body: `<p class="result-copy">발신 위치를 따라 들어온 관찰 구역. 닫힌 유리문 안에서 한 사람이 천천히 일어난다.</p><p class="result-copy">중단발 머리, 검은 옷, 팔에 남은 붉은 학생회 완장. CCTV에서 보았던 실루엣과 겹친다.</p><blockquote class="vaccine-quote">“너희가… 여기까지 왔구나.”</blockquote><p class="result-copy">기업 탐방 때 우리를 인솔했던 생정융 학생회장이다. 유리문 옆 인터폰에 통화 표시가 켜진다.</p>`,
@@ -80,6 +82,7 @@ function renderIsolationHotspots(container) {
 }
 
 function openPresidentConversation() {
+  if (state.presidentRescued) { showPresidentTransferRecord(); return; }
   if (!canAccessIsolationRoom() || state.scene !== "emergencyIsolationRoom" || state.paused || state.failed) return;
   if (!state.presidentConfronted) {
     state.presidentConfronted = true;

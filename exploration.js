@@ -155,7 +155,7 @@ function decorateExplorationHotspots(container) {
 function openFloorDirectory() {
   if (!state.virusTargetIdentified) return;
   const routes = [
-    ...(canAccessIsolationRoom() ? [["3F", "비상 격리실", "enter-isolation-room", state.emergencyPowerRecordCollected, "emergencyIsolationRoom"]] : []),
+    ...(canAccessIsolationRoom() ? [["3F", state.presidentRescued ? "격리실 구조 기록" : "비상 격리실", "enter-isolation-room", state.emergencyPowerRecordCollected, "emergencyIsolationRoom"]] : []),
     ...(canAccessVaccineLab() ? [["3F", "통합 백신 개발실", "enter-vaccine-lab", state.vaccineValidated, "vaccineDevelopmentLab"]] : []),
     ["3F", "분자생물학실", "enter-molecular-lab", state.primerCollected, "molecularBiologyLab"],
     ["3F", "생물정보 분석실", "enter-bioinformatics-lab", state.virusTargetIdentified, "bioinformaticsLab"],
@@ -317,6 +317,7 @@ function renderVialLabel(vial, back) {
 }
 
 function materialThreatActive(kind) {
+  if (kind === "route") return state.rescueRouteFailures > 0 && !state.rescueRouteBiteTriggered && !state.rescueRouteApproved;
   if (kind === "rescue") return state.rescuePowerFailures > 0 && !state.rescuePowerBiteTriggered && !state.rescueLinkEstablished;
   if (kind === "vaccine") return state.vaccinePuzzleFailures > 0 && !state.vaccinePuzzleBiteTriggered && !state.vaccineValidated;
   const keys = { primer: ["primerPuzzleFailures", "primerPuzzleBiteTriggered", "primerCollected"], culture: ["culturePuzzleFailures", "culturePuzzleBiteTriggered", "cultureCellsCollected"], antibody: ["antibodyPuzzleFailures", "antibodyPuzzleBiteTriggered", "antibodyCollected"] }[kind];

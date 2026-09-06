@@ -102,10 +102,37 @@ const initialState = {
   rescueAttachments: [],
   rescueRequestSent: false,
   rescueRequestElapsed: null,
+  rescueRouteStarted: false,
+  rescueRoutePath: [],
+  rescueRouteCamerasRead: [],
+  rescueRouteFailures: 0,
+  rescueRouteBiteTriggered: false,
+  rescueRouteApproved: false,
+  rescuePassageCleared: false,
+  rescueRouteSecured: false,
+  rescueRouteElapsed: null,
+  handoffStarted: false,
+  handoffDelivered: [],
+  handoffSelectedItem: "",
+  presidentMedicalChecked: false,
+  presidentRescued: false,
+  handoffStatementIndex: 0,
+  handoffComplete: false,
+  endingStarted: false,
+  endingDepartureStep: 0,
+  escaped: false,
+  endingEpilogueStarted: false,
+  endingEpilogueIndex: 0,
+  endingComplete: false,
+  endingSummary: null,
   activity: "버스에서 가져온 캠퍼스 안내도가 있다.",
 };
 
 const itemData = {
+  "game-clear-record": { name: "탈출 결과 기록", icon: "✓", description: "플레이 결과 · 에필로그" },
+  "handoff-receipt": { name: "후보·증거 인계 확인서", icon: "▤", description: "수령 목록 · 보관 사본" },
+  "president-statement": { name: "학생회장 직접 진술", icon: "☏", description: "구조 후 진술 · 보관 사본" },
+  "rescue-entry-record": { name: "구조대 진입 기록", icon: "⌖", description: "진입 경로 · 로비 합류 확인" },
   "rescue-transmission-receipt": { name: "구조 요청 수신 확인서", icon: "⌁", description: "자료·위치 수신 완료" },
   "emergency-power-record": { name: "비상 전원 기록", icon: "ϟ", description: "로비 배전반 · 외부 통신 차단" },
   ...vaccineItemData,
@@ -173,6 +200,11 @@ const itemData = {
 };
 
 const scenes = {
+  rescueAssembly: {
+    image: "assets/images/cnu-evacuation-assembly.jpg",
+    alt: "건물 밖 구조 구역에서 구조대와 함께 모여 있는 대학생들",
+    number: "OUT", name: "건물 밖 구조 구역", hud: "OUT · 대피 완료",
+  },
   emergencyIsolationRoom: {
     image: "assets/images/cnu-emergency-isolation-room.jpg",
     alt: "비상 격리실 유리문 안에 중단발 머리와 붉은 완장의 학생회장이 서 있고 앞에는 전달함이 있다",
@@ -328,7 +360,7 @@ let activeSequenceGap = 0;
 let sceneTransitionId = 0;
 let lastHotspotSignature = "";
 let lastInventoryMarkup = "";
-const MODAL_STYLES = ["terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal", "bite-modal", "blackout-modal", "exploration-modal", "vaccine-modal", "isolation-modal", "rescue-modal"];
+const MODAL_STYLES = ["terminal-modal", "evidence-modal", "microscope-modal", "match-puzzle-modal", "sequence-analyzer-modal", "materials-modal", "bite-modal", "blackout-modal", "exploration-modal", "vaccine-modal", "isolation-modal", "rescue-modal", "route-modal", "handoff-modal", "ending-modal"];
 const mobileLayout = window.matchMedia("(max-width: 560px)");
 let inventoryExpanded = !mobileLayout.matches;
 
@@ -341,6 +373,9 @@ function freshState() {
     isolationTopicsRead: [],
     rescuePower: [0, 0, 0],
     rescueAttachments: [],
+    rescueRoutePath: [],
+    rescueRouteCamerasRead: [],
+    handoffDelivered: [],
   };
 }
 
@@ -469,6 +504,7 @@ function createNoiseBuffer(context, seconds = 5) {
 }
 
 function currentBgmProfile() {
+  if (state.endingStarted) return { notes: [65.41, 82.41, 98, 73.42], filter: 950, noise: 0.005, pulse: 0.16, signal: 392, danger: false };
   const sceneProfiles = {
     emergencyIsolationRoom: { notes: [41.2, 49, 43.65, 46.25], filter: 450, noise: 0.013, pulse: 0.32, signal: 207.65 },
     vaccineDevelopmentLab: { notes: [46.25, 55, 65.41, 49], filter: 630, noise: 0.015, pulse: 0.5, signal: 329.63 },
@@ -482,7 +518,7 @@ function currentBgmProfile() {
   const base = state.scene === "lobby" && state.rescueDefenseStarted
     ? { notes: [36.71, 43.65, 41.2, 49], filter: 400, noise: 0.034, pulse: 0.66, signal: 220 }
     : sceneProfiles[state.scene] || { notes: [43.65, 38.89, 49, 41.2], filter: 430, noise: 0.025, pulse: 0.42, signal: 196 };
-  const danger = state.zombieSurgeActive || state.zombieDistance <= 30 || (state.scene === "lobby" && state.rescueDefenseStarted && !state.rescueRequestSent);
+  const danger = state.zombieSurgeActive || state.zombieDistance <= 30 || (state.scene === "lobby" && state.rescueDefenseStarted && !rescueChapterWaiting());
   return {
     ...base,
     danger,
@@ -682,6 +718,7 @@ function startGame(reset = false) {
   saveState();
   render();
   startBgm();
+  if (state.endingStarted) { openEndingFlow(); return; }
   if (state.pendingBiteSource) {
     state.paused = true;
     suspendBgm();
@@ -707,7 +744,9 @@ function renderInventory() {
   $("#item-count").textContent = `${state.inventory.length} / ${INVENTORY_CAPACITY}`;
   const cards = state.inventory.filter((id) => inventoryGroup(id) === inventoryCategory).map((id) => {
     const item = itemData[id];
-    const description = id === "research-fragment"
+    const description = state.handoffDelivered.includes(id)
+      ? id === "vaccine-candidate" ? "의료·연구팀 인계 · 접수 기록" : "인계 완료 · 보관 사본"
+      : id === "research-fragment"
       ? state.presidentMotiveRevealed
         ? "기업 의뢰까지 확인"
         : state.cctvArchiveSolved
@@ -732,7 +771,7 @@ function renderInventory() {
       <button class="item${state.selectedItem === id ? " selected" : ""}" type="button" data-item="${id}">
         ${newInventoryItems.has(id) ? '<span class="inventory-new">NEW</span>' : ""}
         <span class="item-icon" aria-hidden="true">${item.icon}</span>
-        <strong>${item.name}</strong>
+        <strong>${id === "vaccine-candidate" && state.handoffDelivered.includes(id) ? "백신 후보 접수 기록" : item.name}</strong>
         <small>${description}</small>
       </button>`;
   });
@@ -772,6 +811,7 @@ function renderHotspots() {
   const signature = JSON.stringify([state.scene, state.inventory, state.isolationTopicsRead, ...Object.values(state).filter((value) => typeof value === "boolean")]);
   if (signature === lastHotspotSignature) return;
   lastHotspotSignature = signature;
+  if (state.escaped) { renderEndingHotspots(container); return; }
   if (state.scene === "lobby") {
     container.innerHTML = `
       ${!state.letterRead ? `
@@ -936,12 +976,15 @@ function renderScene() {
   $("#scene-name").textContent = defenseScene ? "로비 · 마지막 방어선" : scene.name;
   $("#location-label").textContent = scene.hud;
   renderHotspots();
-  $("#scene").classList.toggle("final-defense-active", defenseScene && !state.rescueRequestSent && !state.paused && !state.failed);
+  $("#scene").classList.toggle("escaped-scene", state.escaped);
+  $("#scene").classList.toggle("final-defense-active", defenseScene && !rescueChapterWaiting() && !state.paused && !state.failed);
 }
 
 function render() {
-  $("#timer").textContent = formatTime(state.elapsed);
-  $("#timer").classList.toggle("urgent", LIMIT_SECONDS - state.elapsed <= 10 * 60);
+  $("#timer").textContent = state.escaped ? formatElapsed(state.endingSummary.elapsed) : formatTime(state.elapsed);
+  $(".timer small").textContent = state.escaped ? "위험 구간 플레이 시간" : "구조대 합류까지";
+  $("#timer").classList.toggle("urgent", !state.escaped && LIMIT_SECONDS - state.elapsed <= 10 * 60);
+  $("#continue-button").textContent = state.endingComplete ? "탈출 결과 다시 보기" : state.endingStarted ? "엔딩 이어 보기" : "이어서 플레이";
   $("#activity").textContent = state.activity;
   $("#bite-pips").querySelectorAll("i").forEach((pip, index) => pip.classList.toggle("active", index < state.bites));
   updateSoundButton();
@@ -953,11 +996,12 @@ function render() {
 }
 
 function transitionTo(sceneName) {
+  if (state.escaped) return;
   const transitionId = ++sceneTransitionId;
   const sceneElement = $("#scene");
   sceneElement.classList.add("transitioning");
   window.setTimeout(() => {
-    if (transitionId !== sceneTransitionId || state.failed || state.paused) {
+    if (transitionId !== sceneTransitionId || state.failed || state.paused || state.escaped) {
       sceneElement.classList.remove("transitioning");
       return;
     }
@@ -1488,6 +1532,7 @@ function inspectMicroscope() {
 }
 
 function goToLobby() {
+  if (state.escaped) { openEndingFlow(); return; }
   closeModal();
   if (state.zombieSurgeActive && !state.barricadeInstalled) {
     setActivity("1층 로비에 도착했다. 출입구 너머로 좀비 무리가 몰려온다. 지금 바리케이드를 설치해야 한다.");
@@ -2701,11 +2746,16 @@ function checkJournalPuzzleAnswer(event) {
 }
 
 function inspectItem(id) {
+  if (state.escaped) { inspectEndingArchive(id); return; }
   newInventoryItems.delete(id);
   state.selectedItem = id;
   saveState();
   renderInventory();
   if (id === "rescue-transmission-receipt") { showRescueReceipt(); return; }
+  if (id === "handoff-receipt") { showHandoffReceipt(); return; }
+  if (id === "president-statement") { showPresidentStatementRecord(); return; }
+  if (id === "vaccine-candidate" && state.handoffDelivered.includes(id)) { showDeliveredItemRecord(id); return; }
+  if (id === "rescue-entry-record") { showRescueEntryRecord(); return; }
   if (id === "emergency-power-record") { openEmergencyPowerRecord(); return; }
   if (vaccineItemData[id]) {
     showVaccineItem(id);
@@ -2828,6 +2878,7 @@ function formatElapsed(seconds) {
 }
 
 function showFailure() {
+  if (state.escaped) return;
   if (failureShown) return;
   failureShown = true;
   state.failed = true;
@@ -2847,7 +2898,7 @@ function showFailure() {
 }
 
 function triggerZombieAttack(source = "distance") {
-  if (state.failed || state.paused || state.rescueRequestSent) return;
+  if (state.failed || state.paused || rescueChapterWaiting()) return;
   const attackDetails = {
     "wrong-room": {
       code: "WRONG ROOM",
@@ -2894,6 +2945,10 @@ function triggerZombieAttack(source = "distance") {
       code: "LAST DEFENSE · POWER FAULT",
       activity: "배전반 경고음이 반복되자 바리케이드 틈으로 다가온 좀비에게 팔을 물렸다. 친구들이 다시 틈을 막았다.",
     },
+    "rescue-route": {
+      code: "LAST DEFENSE · ROUTE DELAY",
+      activity: "진입 경로 확인이 반복해서 늦어지는 사이 바리케이드 틈으로 손을 뻗은 좀비에게 팔을 물렸다. 친구들이 지지대를 다시 밀어 넣었다.",
+    },
     distance: {
       code: "ATTACK",
       activity: "좀비 무리와의 거리가 0m가 되어 공격당했다.",
@@ -2909,7 +2964,7 @@ function triggerZombieAttack(source = "distance") {
       ? 8
       : source === "c07-puzzle"
         ? Math.min(state.zombieDistance, 32)
-      : ["primer-puzzle", "culture-puzzle", "antibody-puzzle", "vaccine-puzzle", "rescue-power"].includes(source)
+      : ["primer-puzzle", "culture-puzzle", "antibody-puzzle", "vaccine-puzzle", "rescue-power", "rescue-route"].includes(source)
         ? Math.min(state.zombieDistance, 24)
       : 60;
   state.paused = true;
@@ -2953,12 +3008,14 @@ function showBiteMark(finalBite, source) {
       "antibody-puzzle": openAntibodyPuzzle,
       "vaccine-puzzle": openVaccineWorkbench,
       "rescue-power": openRescuePowerPanel,
+      "rescue-route": openRescueRoute,
     }[source];
     if (retry) retry();
   });
 }
 
 function showInfectionFailure() {
+  if (state.escaped) return;
   showModal(modalFrame({
     code: "GAME OVER · INFECTED",
     title: "감염 완료",
@@ -2974,6 +3031,8 @@ function showInfectionFailure() {
 
 function handleSceneAction(action) {
   if (state.failed || state.paused) return;
+  if (action === "open-ending") { openEndingFlow(); return; }
+  if (state.escaped) return;
   if (action === "inspect-rescue-power") openRescuePowerPanel();
   if (action === "inspect-rescue-radio") openRescueRadio();
   if (action === "inspect-final-barricade") inspectFinalBarricade();
@@ -3045,7 +3104,7 @@ $("#modal").addEventListener("cancel", (event) => {
 });
 
 window.setInterval(() => {
-  if (!state.started || state.paused || state.failed || state.rescueRequestSent || $("#game").hidden) return;
+  if (!state.started || state.paused || state.failed || rescueChapterWaiting() || $("#game").hidden) return;
   state.elapsed += 1;
   if (state.elapsed >= LIMIT_SECONDS) {
     render();
@@ -3082,6 +3141,8 @@ function registerWebMCP() {
       execute() {
         return {
           scene: state.scene,
+          escaped: state.escaped,
+          endingComplete: state.endingComplete,
           remainingSeconds: Math.max(0, LIMIT_SECONDS - state.elapsed),
           zombieDistanceMeters: state.zombieDistance,
           bites: state.bites,
