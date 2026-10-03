@@ -17,17 +17,21 @@ const presidentRecords = {
       "출력물 뒤에는 짧은 문장이 덧붙어 있다. ‘여기까지 온 친구들에게. 보관 장비 전원은 꺼지지 않게 해 뒀어. 이걸로 내가 한 일이 없어지지는 않겠지. 내가 지운 기록은 C-07 단말기에 남아 있어.’",
     ],
   },
+  // Retain the old item ID so collected/handed-over evidence in existing saves remains valid.
   "president-voice": {
-    scene: "reagentStorage", title: "전송되지 않은 음성 메시지", label: "남겨진 단말기", time: "15:03 · 시약보관실",
+    scene: "reagentStorage", title: "학생회장이 남긴 편지", label: "접어 둔 편지", time: "15:03 · 시약보관실",
+    letter: true,
+    description: "시약보관실 작업대 위에 접힌 종이가 놓여 있다. 겉면에는 ‘같이 탐방 갔던 친구들에게’라고 적혀 있다.",
     paragraphs: [
-      "단말기에 학생회 단체방으로 보내다 실패한 메시지가 남아 있다. 발신자는 생정융 학생회장이다.",
-      "나야. 같이 탐방 갔던 회장. 상자를 가져온 것도, 격리를 해제한 것도 나야. 회사에서 기록을 없애라고 했고, 나는 그대로 했어. 몰랐다는 말로 넘어갈 수 없는 일이야.",
-      "지금 시약보관실을 나가려는데 계단에서 소리가 들려. 난 다른 비상 통로를 찾아볼게. 너희가 이걸 들을 때 내가 어디에 있을지는 모르겠어. 구조대가 오면 기록을 전부 넘겨 줘. 내 이름도 빼지 말고.",
-    ], voice: true,
+      "같이 기업 탐방을 다녀온 친구들에게.",
+      "직접 말해야 할 일을 종이에 남기고 있어. 상자를 가져온 것도, 격리를 해제한 것도 나야. 회사에서 기록을 없애라고 했고, 나는 그대로 했어. 몰랐다는 말로 넘어갈 수 없는 일이야.",
+      "지금 시약보관실을 나가려는데 계단에서 소리가 들려. 나는 다른 비상 통로를 찾아볼게. 너희가 이 편지를 읽을 때 내가 어디에 있을지는 모르겠어.",
+      "구조대가 오면 우리가 남긴 기록을 전부 넘겨 줘. 내가 한 일도 함께 남겨 줘. 내 이름을 빼거나, 없었던 일로 해 달라는 부탁은 하지 않을게.",
+    ],
   },
 };
 const presidentRecordItems = Object.fromEntries(Object.entries(presidentRecords).map(([id, record]) => [id, {
-  name: record.title, icon: record.voice ? "◖" : "▤", description: "사고 이후의 흔적",
+  name: record.title, icon: record.letter ? "✉" : "▤", description: "사고 이후의 흔적",
 }]));
 const primerTubeSequences = ["GCTACG", "CGATGC", "TTACGA", "AATGCT", "TCGTAA"];
 const cultureSamples = [
@@ -48,7 +52,6 @@ let inventoryNoticeTimer = null;
 let heldPrimer = "";
 let explorationAudioNodes = [];
 let blackoutTimer = null;
-let voicePlayback = null;
 
 function inventoryGroup(id) {
   if (["spike-primer-set", "culture-cells", "neutralizing-antibody", "vaccine-candidate"].includes(id)) return "materials";
@@ -90,43 +93,18 @@ function openPresidentRecord(id) {
   if (!record || state.paused || state.failed) return;
   const collected = state.inventory.includes(id);
   showModal(modalFrame({ code: "RECOVERED TRACE · STUDENT COUNCIL", title: record.title,
-    body: `<article class="president-document${record.voice ? " voice-document" : ""}"><header><span>생정융 학생회장</span><time>${record.time}</time></header>${record.paragraphs.map((p) => `<p>${p}</p>`).join("")}${record.voice ? '<div class="voice-controls"><button type="button" data-play-record>▶ 메시지 듣기</button><small id="voice-status" role="status">기기 음성으로 재생 · 대본은 위에서 확인할 수 있다.</small></div>' : ""}</article><button type="button" class="primary-button material-check-button" data-collect-record ${collected ? "disabled" : ""}>${collected ? "증거 보관 완료" : "기록을 챙긴다"}</button>`,
+    body: `${record.description ? `<p class="handling-copy">${record.description}</p>` : ""}<article class="president-document${record.letter ? " president-letter" : ""}"><header><span>생정융 학생회장</span><time>${record.time}</time></header>${record.paragraphs.map((p) => `<p>${p}</p>`).join("")}${record.letter ? '<footer>생정융 학생회장 씀</footer>' : ""}</article><button type="button" class="primary-button material-check-button" data-collect-record ${collected ? "disabled" : ""}>${collected ? "증거 보관 완료" : record.letter ? "편지를 챙긴다" : "기록을 챙긴다"}</button>`,
   }));
   $("#modal").classList.add("evidence-modal", "exploration-modal");
   $("[data-collect-record]").addEventListener("click", () => {
     if (state.inventory.includes(id)) return;
     addItem(id);
     state.selectedItem = id;
-    setActivity(`${record.title}을 증거로 보관했다.`);
+    setActivity(`${record.title} — 증거 인벤토리에 보관했다.`);
     saveState(); render();
     $("[data-collect-record]").disabled = true;
     $("[data-collect-record]").textContent = "증거 보관 완료";
   });
-  if (record.voice) $("[data-play-record]").addEventListener("click", () => playPresidentVoice(record));
-}
-
-function playPresidentVoice(record) {
-  const status = $("#voice-status");
-  if (voicePlayback) { stopExplorationAudio(); return; }
-  if (!state.audioEnabled) { status.textContent = "소리가 꺼져 있다. 소리를 켜거나 대본으로 확인하자."; return; }
-  if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
-    status.textContent = "이 기기는 음성 재생을 지원하지 않는다. 위 대본으로 확인할 수 있다."; return;
-  }
-  const speech = new window.SpeechSynthesisUtterance(record.paragraphs.slice(1).join(" "));
-  speech.lang = "ko-KR"; speech.rate = 0.9;
-  const voice = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith("ko"));
-  if (voice) speech.voice = voice;
-  voicePlayback = speech;
-  $("[data-play-record]").textContent = "■ 재생 멈추기";
-  status.textContent = "메시지 재생 중…";
-  speech.onend = speech.onerror = () => {
-    if (voicePlayback !== speech) return;
-    voicePlayback = null;
-    status.textContent = "대본은 언제든 다시 읽을 수 있다.";
-    const button = $("[data-play-record]");
-    if (button) button.textContent = "▶ 다시 듣기";
-  };
-  window.speechSynthesis.speak(speech);
 }
 
 function decorateExplorationHotspots(container) {
@@ -358,14 +336,6 @@ function playApproachFootsteps() {
 }
 
 function stopExplorationAudio() {
-  if (voicePlayback) {
-    voicePlayback = null;
-    window.speechSynthesis?.cancel();
-    const button = $("[data-play-record]");
-    if (button) button.textContent = "▶ 메시지 듣기";
-    const status = $("#voice-status");
-    if (status) status.textContent = "재생을 멈췄다. 대본으로도 확인할 수 있다.";
-  }
   explorationAudioNodes.forEach((node) => { try { if (node.stop) node.stop(); node.disconnect(); } catch { /* Already ended. */ } });
   explorationAudioNodes = [];
 }

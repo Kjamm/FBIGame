@@ -104,18 +104,17 @@ checkAntibodyVial('R-11');assert(state.failed && state.bites===3,'third total bi
 state=freshState();loadState();assert(state.failed && state.bites===3,'game over persisted');
 begin();triggerZombieAttack('distance');startGame(true);flush(240);assert(!$('#modal').open && !$('#modal').classList.contains('blackout-modal'),'reset cancels pending blackout');
 begin();transitionTo('cellCultureLab');state.failed=true;flush(260);assert(state.scene==='molecularBiologyLab','late transition cannot bypass game over');
-// Audio effects respect BGM mute and cleanup; speech always has transcript fallback.
+// Audio effects respect BGM mute and cleanup; the president's record is now a letter.
 begin();window.AudioContext=FakeAudio;startBgm();assert(intervals.size===2,'one BGM timer');
 playApproachFootsteps();assert(explorationAudioNodes.length===6,'three synthesized footsteps');
 closeModal();assert(explorationAudioNodes.length===0,'closing clears effects');
 state.audioEnabled=false;playApproachFootsteps();assert(!explorationAudioNodes.length,'mute suppresses footsteps');
-openPresidentRecord('president-voice');playPresidentVoice(presidentRecords['president-voice']);
-assert($('#voice-status').textContent.includes('소리가 꺼져'),'muted voice has transcript fallback');
-state.audioEnabled=true;playPresidentVoice(presidentRecords['president-voice']);assert($('#voice-status').textContent.includes('지원하지'),'unsupported voice fallback');
-var cancelled=0;window.SpeechSynthesisUtterance=function(text){this.text=text;};
-window.speechSynthesis={getVoices(){return[];},speak(){},cancel(){cancelled++;}};
-playPresidentVoice(presidentRecords['president-voice']);assert(voicePlayback,'voice starts');
-suspendBgm();assert(!voicePlayback && cancelled===1,'pause cancels voice');
+openPresidentRecord('president-voice');
+assert($('#modal-content').innerHTML.includes('학생회장이 남긴 편지') && $('#modal-content').innerHTML.includes('생정융 학생회장 씀'),'legacy evidence ID opens signed letter');
+assert(!$('#modal-content').innerHTML.includes('data-play-record') && !$('#modal-content').innerHTML.includes('음성'),'letter has no speech controls');
+$('[data-collect-record]').handlers.click();saveState();loadState();
+assert(state.inventory.includes('president-voice') && itemData['president-voice'].icon==='✉' && handoffItemNotes['president-voice'][2].includes('편지'),'collected letter persists and remains valid handoff evidence');
+state.audioEnabled=true;suspendBgm();assert(audioContext.state==='suspended','BGM pause still works without speech');
 state.paused=false;startBgm();var notes=bgmController.drone.frequency.value;state.scene='coldStorage';render();
 assert(bgmController.drone.frequency.value!==notes,'scene changes BGM');
 state.zombieDistance=20;render();assert(bgmController.pulseLfo.frequency.value===0.82,'danger changes pulse');
